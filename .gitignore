@@ -22,12 +22,8 @@ env/
 outputs*/
 outputs_real/
 
-# Keep the data directory structure but not the CSVs generated from real rasters
-# (raw QGIS raster data stays on your machine, not in the repo)
-data/landslide_training_data.csv
-data/aizawl_grid.csv
-
-# ─── QGIS / GIS files (kept locally, too large for GitHub) ───────────────────
+# ─── QGIS / GIS files outside final_maps/ ─────────────────────────────────────
+# Ignore raw uncompressed rasters outside our compressed final_maps directory
 *.tif
 *.tiff
 *.vrt
@@ -43,6 +39,10 @@ data/aizawl_grid.csv
 *.cpg
 *.kml
 *.kmz
+
+# Explicitly un-ignore our curated, compressed final maps and datasets!
+!final_maps/*
+!data/*
 
 # ─── Pickle / binary model files ─────────────────────────────────────────────
 *.pkl
