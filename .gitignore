@@ -1,0 +1,67 @@
+# LSI ML Pipeline — .gitignore
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# ─── Jupyter ──────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── Pipeline outputs ─────────────────────────────────────────────────────────
+# Trained models and scalers (binary, large)
+outputs*/
+outputs_real/
+
+# Keep the data directory structure but not the CSVs generated from real rasters
+# (raw QGIS raster data stays on your machine, not in the repo)
+data/landslide_training_data.csv
+data/aizawl_grid.csv
+
+# ─── QGIS / GIS files (kept locally, too large for GitHub) ───────────────────
+*.tif
+*.tiff
+*.vrt
+*.qgz
+*.qgs
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.cpg
+*.kml
+*.kmz
+
+# ─── Pickle / binary model files ─────────────────────────────────────────────
+*.pkl
+*.joblib
+
+# ─── OS / editor ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── pytest cache ────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
