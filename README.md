@@ -141,13 +141,19 @@ All authoritative QGIS raster maps, vector inventories, and analytical CSVs used
 
 ```
 lsi_ml_pipeline/
+├── docs/
+│   └── LSI_BTP_WORK_ACHIEVED.md       ← Progress log for the Sonker 2022 17-factor replication
+    gee/                              CHIRPS + TRMM/IMERG Earth Engine scripts
+    scripts/process_ndvi_qgis.py      Landsat NDVI helper (factor not finished)
 ├── data/
 │   ├── fr_analysis_summary.csv        ← Master statistical FR table (Section 6)
 │   ├── landslide_training_data.csv    ← 44-row balanced dataset (22 landslides + 22 pseudo-absences)
 │   ├── landslide_full_dataset.csv     ← Complete exported dataset with coordinates
-│   └── aizawl_grid.csv                ← 46 KB spatial point grid for LSI mapping
+│   ├── aizawl_grid.csv                ← 46 KB spatial point grid for LSI mapping
+│   └── usgs_earthquakes_query.csv     ← USGS catalog extract used for the magnitude factor
 │
-└── final_maps/                        ← Losslessly compressed QGIS GeoTIFFs & Shapefiles (~15 MB total)
+└── final_maps/                        ← QGIS GeoTIFFs, GeoPackages, and project files
+    ├── LSI_btp.qgz                    ← Current Aizawl QGIS project snapshot
     ├── LSI_Final_Zones.tif            ← Final 5-Zone Hazard Map (Very Low to Very High)
     ├── LSI_Master.tif                 ← Continuous raw cumulative LSI raster (Σ FR)
     ├── Slope_fr_Final.tif             ← FR-weighted Slope intensity raster
@@ -157,8 +163,14 @@ lsi_ml_pipeline/
     ├── SLOPE_RECLASS.tif              ← Discrete integer reclassification (Classes 1–3)
     ├── ASPECT_RECLASS.tif             ← Discrete integer reclassification (Classes 1–9)
     ├── Aizawl_Points_UTM.gpkg         ← 22 standardized landslide occurrence points (EPSG:32646)
-    └── AIZWAL.shp (.dbf/.shx/.prj)    ← Administrative study area boundary
+    ├── AIZWAL.shp (.dbf/.shx/.prj)    ← Administrative study area boundary
+    ├── sonker_roads_aizawl_network.gpkg ← OSM vehicle roads clipped to Aizawl
+    ├── sonker_distance_to_roads.tif   ← 30 m distance-to-roads factor
+    ├── sonker_earthquakes_aizawl.gpkg ← 733 USGS events around Aizawl
+    └── sonker_earthquake_magnitude.tif ← IDW magnitude surface (3.6–5.4)
 ```
+
+CHIRPS 2010-2018 mean annual rainfall is exported with [`docs/gee/gee_chirps_aizawl_2009_2018.js`](docs/gee/gee_chirps_aizawl_2009_2018.js). Progress vs the 17-factor Sonker et al. (2022) stack is tracked in [`docs/LSI_BTP_WORK_ACHIEVED.md`](docs/LSI_BTP_WORK_ACHIEVED.md). Those additions live on stacked branches (`docs/btp-progress-log` → `feat/distance-to-roads` → `feat/earthquake-magnitude` → `feat/qgis-lsi-btp-project`) so each factor can be reviewed on its own.
 
 ---
 

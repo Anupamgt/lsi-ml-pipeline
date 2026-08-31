@@ -60,6 +60,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+*.aux.xml
 
 # ─── pytest cache ────────────────────────────────────────────────────────────
 .pytest_cache/
