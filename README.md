@@ -143,6 +143,8 @@ All authoritative QGIS raster maps, vector inventories, and analytical CSVs used
 lsi_ml_pipeline/
 ├── docs/
 │   └── LSI_BTP_WORK_ACHIEVED.md       ← Progress log for the Sonker 2022 17-factor replication
+    gee/                              CHIRPS + TRMM/IMERG Earth Engine scripts
+    scripts/process_ndvi_qgis.py      Landsat NDVI helper (factor not finished)
 ├── data/
 │   ├── fr_analysis_summary.csv        ← Master statistical FR table (Section 6)
 │   ├── landslide_training_data.csv    ← 44-row balanced dataset (22 landslides + 22 pseudo-absences)
@@ -168,7 +170,7 @@ lsi_ml_pipeline/
     └── sonker_earthquake_magnitude.tif ← IDW magnitude surface (3.6–5.4)
 ```
 
-Progress vs the 17-factor Sonker et al. (2022) stack is tracked in [`docs/LSI_BTP_WORK_ACHIEVED.md`](docs/LSI_BTP_WORK_ACHIEVED.md). Those additions live on stacked branches (`docs/btp-progress-log` → `feat/distance-to-roads` → `feat/earthquake-magnitude` → `feat/qgis-lsi-btp-project`) so each factor can be reviewed on its own.
+CHIRPS 2010-2018 mean annual rainfall is exported with [`docs/gee/gee_chirps_aizawl_2009_2018.js`](docs/gee/gee_chirps_aizawl_2009_2018.js). Progress vs the 17-factor Sonker et al. (2022) stack is tracked in [`docs/LSI_BTP_WORK_ACHIEVED.md`](docs/LSI_BTP_WORK_ACHIEVED.md). Those additions live on stacked branches (`docs/btp-progress-log` → `feat/distance-to-roads` → `feat/earthquake-magnitude` → `feat/qgis-lsi-btp-project`) so each factor can be reviewed on its own.
 
 ---
 
