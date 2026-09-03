@@ -1,8 +1,10 @@
-# Frequency Ratio analysis — Aizawl, Mizoram
+# Frequency Ratio analysis — Aizawl, Mizoram (Phase 1 baseline)
 
-**Document for supervisor review**  
-Project: Landslide Susceptibility Index (LSI), IIT Patna B.Tech  
-Study area: Aizawl district, Mizoram · CRS: EPSG:32646 (UTM 46N)
+**Document for supervisor review — 3-factor topographic FR only.**  
+The 17-factor Sonker run (with caveats) is in [`FR_17_FACTOR_REPORT.md`](FR_17_FACTOR_REPORT.md).
+
+**Project:** Landslide Susceptibility Index (LSI), IIT Patna B.Tech  
+**Study area:** Aizawl district, Mizoram · CRS: EPSG:32646 (UTM 46N)
 
 This note is the analysis companion to the maps in [`../maps/`](../maps/). It reports **Phase 1**, which is complete, and states clearly what the **17-factor** stack is and is not.
 

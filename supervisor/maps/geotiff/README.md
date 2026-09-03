@@ -4,8 +4,9 @@ All rasters are **EPSG:32646** (WGS 84 / UTM zone 46N), LZW-compressed, tiled.
 
 | Prefix | Meaning |
 |---|---|
-| `P1_` | Phase 1 Frequency Ratio / LSI **results** |
-| `S17_` | Sonker et al. (2022) **input** factors (17-factor LSI not computed yet) |
+| `P2_` | 17-factor FR / LSI **results** (exploratory) |
+| `P1_` | Phase 1 three-factor Frequency Ratio / LSI **results** |
+| `S17_` | Sonker et al. (2022) **input** factors |
 
 Open [`../../Aizawl_LSI_supervisor.qgz`](../../Aizawl_LSI_supervisor.qgz) to load every layer in groups, or add individual files in QGIS / ArcGIS / `rasterio`.
 
