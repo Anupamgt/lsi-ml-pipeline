@@ -1,0 +1,17 @@
+Parameter,Class,Description,Landslide_Count,Landslide_Pct,Pixel_Count,Area_Pct,FR_Weight
+Aspect,1,Flat,0,0.0,209,0.0047,0.0
+Aspect,2,North,3,13.6364,517862,11.6761,1.0404
+Aspect,3,North-East,3,13.6364,466807,10.5252,1.1542
+Aspect,4,East,3,13.6364,494209,11.143,1.0902
+Aspect,5,South-East,1,4.5455,465437,10.4943,0.3859
+Aspect,6,South,4,18.1818,515819,11.6301,1.3927
+Aspect,7,South-West,2,9.0909,476864,10.7519,0.7533
+Aspect,8,West,4,18.1818,530814,11.9683,1.3534
+Aspect,9,North-West,2,9.0909,483157,10.893,0.7434
+Elevation,1,Very Low (< 500m),0,0.0,1000966,25.2169,0.0
+Elevation,2,Low (500 - 800m),2,9.0909,1015890,25.5929,0.3553
+Elevation,3,Moderate (800 - 1100m),3,13.6364,1003474,25.2801,0.5401
+Elevation,4,High (> 1100m),17,77.2727,949092,23.9101,3.2359
+Slope,1,Gentle Slope (0 - 15 deg),4,18.1818,936735,23.6,0.8622
+Slope,2,Moderate Slope (15 - 30 deg),6,27.2727,1018920,25.67,1.0631
+Slope,3,Steep Slope (> 30 deg),12,54.5455,2013767,50.73,1.4615
