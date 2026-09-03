@@ -6,6 +6,8 @@
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3+-orange.svg)](https://scikit-learn.org/)
 [![QGIS](https://img.shields.io/badge/QGIS-3.30+-green.svg)](https://qgis.org/)
 
+> **For supervisors / reviewers:** start at **[`supervisor/README.md`](supervisor/README.md)**. That folder is a self-contained pack: Frequency Ratio write-up, JPEG previews you can open in the browser, and GeoTIFFs plus a QGIS project for GIS.
+
 ---
 
 ## Executive Summary

@@ -44,6 +44,19 @@ outputs_real/
 !final_maps/*
 !data/*
 
+# Supervisor review pack (GeoTIFF, JPEG, vectors, QGIS project)
+!supervisor/
+!supervisor/**
+!supervisor/**/*.tif
+!supervisor/**/*.tiff
+!supervisor/**/*.gpkg
+!supervisor/**/*.qgz
+!supervisor/**/*.shp
+!supervisor/**/*.shx
+!supervisor/**/*.dbf
+!supervisor/**/*.prj
+!supervisor/**/*.cpg
+
 # ─── Pickle / binary model files ─────────────────────────────────────────────
 *.pkl
 *.joblib
