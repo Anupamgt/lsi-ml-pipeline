@@ -41,8 +41,10 @@ outputs_real/
 *.kmz
 
 # Explicitly un-ignore our curated, compressed final maps and datasets!
-!final_maps/*
-!data/*
+!final_maps/
+!final_maps/**
+!data/
+!data/**
 
 # ─── Pickle / binary model files ─────────────────────────────────────────────
 *.pkl
