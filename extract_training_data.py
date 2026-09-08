@@ -9,11 +9,17 @@ landslide points and buffered pseudo-absences (EPSG:32646), and writes
 
     x, y, <17 *_fr features>, target
 
+Also supports a coarse prediction grid via ``--grid`` / ``--grid-only``::
+
+    python extract_training_data.py --grid-only
+    # → data/aizawl_grid.csv  with columns x, y, <17 *_fr>
+
 Repo-relative paths only — no machine-specific absolute paths.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -28,13 +34,16 @@ from lsi_pipeline.feature_registry import (
     FEATURE_SPECS,
     FR_TABLE_PATH,
     LANDSLIDE_POINTS_PATH,
+    REPO_ROOT,
     TARGET_CRS,
     TRAINING_CSV_PATH,
     missing_rasters,
 )
 
 PIXEL_STRIDE = 10  # stride for building the valid-pixel candidate pool
+GRID_STRIDE = 40  # coarser stride for prediction-grid CSV (keeps file small)
 DISTANCE_BATCH = 50_000
+GRID_CSV_PATH: Path = REPO_ROOT / "data" / "aizawl_grid.csv"
 
 
 # ─── FR TABLE ────────────────────────────────────────────────────────────────
@@ -149,21 +158,55 @@ def all_features_finite(feat: dict[str, np.ndarray]) -> np.ndarray:
     return mask
 
 
+# ─── GRID EXPORT ─────────────────────────────────────────────────────────────
+
+
+def generate_prediction_grid(
+    output_path: Path,
+    fr_maps: dict[str, dict[int, float]],
+    stride: int = GRID_STRIDE,
+) -> pd.DataFrame:
+    """Build a coarse prediction grid: x, y + all FEATURE_COLUMNS (no target).
+
+    Samples the slope class raster on a strided lattice, then maps every
+    registered class GeoTIFF → raw FR at those centroids. Rows missing any
+    feature are dropped.
+    """
+    pool_raster = next(s for s in FEATURE_SPECS if s.column == "slope_fr").raster_path
+    print(f"\n[G1] Building strided pixel lattice (stride={stride}) "
+          f"from {pool_raster.name} …")
+    xs, ys = build_valid_pixel_pool(pool_raster, stride=stride)
+    print(f"    Lattice size: {len(xs):,} candidate centroids")
+
+    print("\n[G2] Sampling all 17 class rasters → FR …")
+    feat = sample_all_features(xs, ys, fr_maps)
+    ok = all_features_finite(feat)
+    print(f"    Valid (all 17 finite): {ok.sum():,}/{len(xs):,}")
+
+    data: dict[str, np.ndarray] = {
+        "x": xs[ok],
+        "y": ys[ok],
+    }
+    for col in FEATURE_COLUMNS:
+        data[col] = feat[col][ok]
+
+    col_order = ["x", "y", *FEATURE_COLUMNS]
+    df = pd.DataFrame(data)[col_order]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+    print(f"\n  ✓ Grid saved → {output_path}  (shape: {df.shape})")
+    print(f"  columns: {list(df.columns)}")
+    return df
+
+
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
+    """Sample landslides + buffered pseudo-absences → training CSV."""
     print("\n" + "═" * 68)
     print("  DATA EXTRACTION — 17 Sonker FR class rasters → training CSV")
     print("═" * 68)
-
-    missing = missing_rasters()
-    if missing:
-        lines = "\n".join(f"  - {p}" for p in missing)
-        raise FileNotFoundError(
-            f"Missing {len(missing)} registered GeoTIFF(s). "
-            f"Expected under final_maps/sonker_17/:\n{lines}"
-        )
 
     if not LANDSLIDE_POINTS_PATH.exists():
         raise FileNotFoundError(
@@ -171,7 +214,6 @@ def main() -> None:
         )
 
     rng = np.random.default_rng(RANDOM_STATE)
-    fr_maps = load_class_to_fr_maps(FR_TABLE_PATH)
     print(f"\n[0] FR table: {FR_TABLE_PATH.name}  "
           f"({len(fr_maps)} factors, raw FR lookups)")
 
@@ -232,11 +274,8 @@ def main() -> None:
     # ── 5. Select & validate pseudo-absences (all 17 finite) ─────────────
     print(f"\n[5] Selecting {n_pos} pseudo-absence locations "
           "(require finite values on all 17 features) …")
-    # Oversample then filter; reshuffle if needed
     n_needed = n_pos
     max_attempts = 5
-    neg_x = neg_y = None
-    neg_feat: dict[str, np.ndarray] | None = None
     remaining_idx = np.arange(len(cand_x))
     rng.shuffle(remaining_idx)
     collected_x: list[float] = []
@@ -306,6 +345,61 @@ def main() -> None:
     print("\n  Per-class feature means:")
     print(df.groupby("target")[FEATURE_COLUMNS].mean().round(4).to_string())
     print()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Extract 17-FR training data and/or a coarse prediction grid "
+        "from Sonker class GeoTIFFs."
+    )
+    parser.add_argument(
+        "--grid",
+        action="store_true",
+        help="Write data/aizawl_grid.csv (x,y + all FEATURE_COLUMNS) via "
+        "strided raster sampling instead of (or in addition to) training CSV",
+    )
+    parser.add_argument(
+        "--grid-only",
+        action="store_true",
+        help="Only regenerate the prediction grid (skip training extraction)",
+    )
+    parser.add_argument(
+        "--grid-stride",
+        type=int,
+        default=GRID_STRIDE,
+        help=f"Pixel stride for grid lattice (default: {GRID_STRIDE})",
+    )
+    parser.add_argument(
+        "--grid-output",
+        type=Path,
+        default=GRID_CSV_PATH,
+        help=f"Grid CSV path (default: {GRID_CSV_PATH})",
+    )
+    args = parser.parse_args()
+
+    missing = missing_rasters()
+    if missing:
+        lines = "\n".join(f"  - {p}" for p in missing)
+        raise FileNotFoundError(
+            f"Missing {len(missing)} registered GeoTIFF(s). "
+            f"Expected under final_maps/sonker_17/:\n{lines}"
+        )
+
+    fr_maps = load_class_to_fr_maps(FR_TABLE_PATH)
+
+    do_grid = args.grid or args.grid_only
+    do_train = not args.grid_only
+
+    if do_train:
+        extract_training(fr_maps)
+
+    if do_grid:
+        print("\n" + "═" * 68)
+        print("  GRID EXPORT — strided Sonker class rasters → aizawl_grid.csv")
+        print("═" * 68)
+        generate_prediction_grid(
+            args.grid_output, fr_maps, stride=args.grid_stride
+        )
 
 
 if __name__ == "__main__":

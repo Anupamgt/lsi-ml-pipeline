@@ -110,7 +110,10 @@ With the topographical foundation validated, the project is optimally positioned
 
 ## 6. Frequency Ratio (FR) Analysis Summary Table
 
-The complete statistical breakdown of the bivariate FR modeling across all three foundational parameters is provided in [`data/fr_analysis_summary.csv`](data/fr_analysis_summary.csv):
+> **Current (17-factor) FR table:** use [`data/fr_class_table_17factor.csv`](data/fr_class_table_17factor.csv) (raw `FR` column; companion JSON: [`data/fr_results_17factor.json`](data/fr_results_17factor.json)). This is what `extract_training_data.py` and the ML feature registry consume.  
+> **Phase-1 archive:** [`data/fr_analysis_summary.csv`](data/fr_analysis_summary.csv) documents the original 3-parameter (Aspect / Elevation / Slope) bivariate analysis shown below — historical reference only; not used by the 17-feature pipeline.
+
+The Phase-1 statistical breakdown across the three foundational parameters:
 
 | Parameter | Class | Description | Landslide Count (\(N_{class}\)) | Landslide % | Pixel Count (\(A_{class}\)) | Area % | **FR Weight** | Hazard Interpretation |
 | :--- | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
@@ -142,22 +145,17 @@ All authoritative QGIS raster maps, vector inventories, and analytical CSVs used
 ```
 lsi_ml_pipeline/
 ├── data/
-│   ├── fr_analysis_summary.csv        ← Master statistical FR table (Section 6)
-│   ├── landslide_training_data.csv    ← 44-row balanced dataset (22 landslides + 22 pseudo-absences)
-│   ├── landslide_full_dataset.csv     ← Complete exported dataset with coordinates
-│   └── aizawl_grid.csv                ← 46 KB spatial point grid for LSI mapping
+│   ├── fr_class_table_17factor.csv    ← Authoritative 17-factor class→FR table (use this)
+│   ├── fr_results_17factor.json       ← Full 17-factor FR analysis JSON
+│   ├── fr_analysis_summary.csv        ← Phase-1 3-parameter archive (Section 6 table)
+│   ├── landslide_training_data.csv    ← Balanced 17-FR training set (extract_training_data.py)
+│   └── aizawl_grid.csv                ← Coarse study-area grid: x,y + 17 FR columns
 │
-└── final_maps/                        ← Losslessly compressed QGIS GeoTIFFs & Shapefiles (~15 MB total)
-    ├── LSI_Final_Zones.tif            ← Final 5-Zone Hazard Map (Very Low to Very High)
-    ├── LSI_Master.tif                 ← Continuous raw cumulative LSI raster (Σ FR)
-    ├── Slope_fr_Final.tif             ← FR-weighted Slope intensity raster
-    ├── Aspect_FR_final.tif            ← FR-weighted Aspect intensity raster
-    ├── Elevation_FR_final.tif         ← FR-weighted Elevation intensity raster
-    ├── Elevation_reclass_final.tif    ← Discrete integer reclassification (Classes 1–4)
-    ├── SLOPE_RECLASS.tif              ← Discrete integer reclassification (Classes 1–3)
-    ├── ASPECT_RECLASS.tif             ← Discrete integer reclassification (Classes 1–9)
-    ├── Aizawl_Points_UTM.gpkg         ← 22 standardized landslide occurrence points (EPSG:32646)
-    └── AIZWAL.shp (.dbf/.shx/.prj)    ← Administrative study area boundary
+└── final_maps/
+    ├── sonker_17/                     ← 17 Sonker class GeoTIFFs (pipeline inputs)
+    ├── Aizawl_Points_UTM.gpkg         ← Landslide occurrence points (EPSG:32646)
+    ├── LSI_Final_Zones.tif            ← Phase-1 5-Zone Hazard Map
+    └── …                              ← Phase-1 FR / reclass rasters & boundary shapefile
 ```
 
 ---
@@ -169,7 +167,33 @@ To advance beyond bivariate statistics, we engineered an end-to-end Machine Lear
 ### Why Spatial Cross-Validation Matters
 Standard K-Fold Cross-Validation causes **data leakage** in geospatial modeling due to **spatial autocorrelation** (nearby points sharing identical terrain attributes). To provide a rigorous, academic-grade evaluation, our pipeline uses **Buffered Spatial Leave-One-Out Cross-Validation (LOOCV)** with a **1,000-meter exclusion radius**: when testing on a location, all training data within 1 km is strictly excluded.
 
-### Model Comparison (3 Features: Slope, Aspect, Elevation FR)
+### Active Feature Set (17 Sonker FR Parameters)
+
+The ML pipeline trains on all **17 Sonker Frequency Ratio factors** defined in [`lsi_pipeline/feature_registry.py`](lsi_pipeline/feature_registry.py) / [`lsi_pipeline/config.py`](lsi_pipeline/config.py) — **no `aspect_fr`**:
+
+| # | Feature column | FR table key |
+|---|----------------|--------------|
+| 1 | `rainfall_fr` | rainfall |
+| 2 | `earthquake_fr` | earthquake |
+| 3 | `slope_fr` | slope |
+| 4 | `elevation_fr` | altitude |
+| 5 | `distance_drainage_fr` | drainage_dist |
+| 6 | `tri_fr` | tri |
+| 7 | `geomorphology_fr` | geomorphology |
+| 8 | `geology_fr` | geology |
+| 9 | `soil_fr` | soil |
+| 10 | `gravity_anomaly_fr` | gravity |
+| 11 | `distance_faults_fr` | faults_dist |
+| 12 | `sti_fr` | sti |
+| 13 | `twi_fr` | twi |
+| 14 | `spi_fr` | spi |
+| 15 | `distance_roads_fr` | roads_dist |
+| 16 | `lulc_fr` | lulc |
+| 17 | `ndvi_fr` | ndvi |
+
+Class integers are sampled from GeoTIFFs under `final_maps/sonker_17/` and mapped to raw FR via [`data/fr_class_table_17factor.csv`](data/fr_class_table_17factor.csv).
+
+### Model Comparison (historical Phase-1 baseline: 3 features)
 
 | Model | **Buffered LOOCV AUC** *(Primary Metric)* | Stratified 5-Fold CV AUC | vs. QGIS FR Baseline |
 | :--- | :---: | :---: | :---: |
@@ -177,11 +201,11 @@ Standard K-Fold Cross-Validation causes **data leakage** in geospatial modeling 
 | **Random Forest (RF)** | **0.727** | 0.750 ± 0.183 | −4.3% (Small-sample variance penalty) |
 | *QGIS FR Statistical Baseline* | *~0.770* | — | *Baseline* |
 
-> **Why Logistic Regression outperforms Random Forest here:** With a small dataset ($N=44$) and only 3 features, complex tree-based ensembles like Random Forest tend to overfit individual spatial folds. The linear boundary of Logistic Regression generalizes significantly better under strict 1 km spatial holdouts. **As the remaining 14 features are integrated in Phase 2, Random Forest is projected to surpass LR, reaching AUC ≈ 0.85–0.92.**
+> Numbers above are from the **Phase-1 3-feature** (slope / aspect / elevation) Buffered LOOCV run. Re-run `run_pipeline.py` on the 17-feature training CSV to refresh metrics.
 
-### Machine Learning Feature Importance (RF Gini)
+### Machine Learning Feature Importance (RF Gini — Phase-1 archive)
 1. `elevation_fr` — **0.4880** (Dominant predictor, confirming the FR score of 3.24)
-2. `aspect_fr` — **0.3607** (Monsoon windward exposure)
+2. `aspect_fr` — **0.3607** (Monsoon windward exposure; not in the current 17-feature set)
 3. `slope_fr` — **0.1513** (Steepness gradient)
 
 ---
@@ -192,37 +216,36 @@ Standard K-Fold Cross-Validation causes **data leakage** in geospatial modeling 
 ```bash
 git clone https://github.com/Anupamgt/lsi-ml-pipeline.git
 cd lsi-ml-pipeline
-pip install scikit-learn pandas numpy matplotlib geopandas rasterio pyproj
+pip install -e .
+# or: pip install scikit-learn pandas numpy matplotlib geopandas rasterio pyproj joblib
+```
+
+### Extract training data & coarse prediction grid
+```bash
+python3 extract_training_data.py              # → data/landslide_training_data.csv (17 FR + target)
+python3 extract_training_data.py --grid       # → data/aizawl_grid.csv (x,y + 17 FR)
 ```
 
 ### Run the ML Pipeline on Real Aizawl Data
 ```bash
-python3 run_pipeline.py --input data/landslide_training_data.csv --output outputs_real/
+# Fast smoke (skip Buffered LOOCV):
+python3 run_pipeline.py \
+  --input data/landslide_training_data.csv \
+  --grid data/aizawl_grid.csv \
+  --output outputs_17/ \
+  --skip-loocv
+
+# Full evaluation (Buffered LOOCV — slower on small N):
+python3 run_pipeline.py --input data/landslide_training_data.csv --output outputs_17/
 ```
 
-### Run Automated Suite (13 Unit Tests)
+### Run Automated Unit Tests
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-### How to Add the Remaining 14 Parameters (Zero Code Refactoring)
-As you generate additional FR rasters in QGIS (e.g., Rainfall, NDVI, TWI, Lithology, Distance to Drainage, Earthquake density):
-1. Place the TIFF rasters into `final_maps/`
-2. Add their sampling paths to `extract_training_data.py`
-3. Uncomment the feature names in [`lsi_pipeline/config.py`](lsi_pipeline/config.py):
-
-```python
-FEATURE_COLUMNS: list[str] = [
-    "slope_fr",
-    "aspect_fr",
-    "elevation_fr",
-    # "rainfall_fr",             # ← Simply uncomment as each raster is ready!
-    # "distance_drainage_fr",
-    # "tri_fr",
-    # "ndvi_fr",
-    # ... 10 more
-]
-```
+### Changing the Active Feature Set
+Edit [`lsi_pipeline/feature_registry.py`](lsi_pipeline/feature_registry.py) (`FEATURE_SPECS`). `FEATURE_COLUMNS` in [`lsi_pipeline/config.py`](lsi_pipeline/config.py) is derived from that registry — no separate uncomment list. After changes, re-run `extract_training_data.py` (and `--grid` if needed).
 
 ---
 
