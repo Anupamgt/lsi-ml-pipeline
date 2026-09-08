@@ -1,34 +1,23 @@
 """
 config.py — Central configuration for the LSI ML Pipeline.
 
-Edit FEATURE_COLUMNS to add new FR features as they become available
-from QGIS without touching any other module.
+Edit FEATURE_COLUMNS / feature_registry to change the active FR feature set
+without touching training, evaluation, or map modules.
 """
 
+from lsi_pipeline.feature_registry import (  # noqa: F401 — re-exported for callers
+    FEATURE_REGISTRY,
+    FEATURE_SPECS,
+    FR_RESULTS_PATH,
+    FR_TABLE_PATH,
+    LANDSLIDE_POINTS_PATH,
+    SONKER_17_DIR,
+    TRAINING_CSV_PATH,
+)
+
 # ─── FEATURE COLUMNS ────────────────────────────────────────────────────────
-# Single source of truth. Currently 3 active; extend to 17 by appending.
-FEATURE_COLUMNS: list[str] = [
-    # --- Currently Available ---
-    "slope_fr",
-    "aspect_fr",
-    "elevation_fr",
-    # --- To be added after QGIS FR analysis is complete ---
-    # "rainfall_fr",
-    # "earthquake_fr",
-    # "distance_drainage_fr",
-    # "tri_fr",
-    # "gravity_anomaly_fr",
-    # "distance_faults_fr",
-    # "sti_fr",
-    # "twi_fr",
-    # "spi_fr",
-    # "distance_roads_fr",
-    # "ndvi_fr",
-    # "geomorphology_fr",
-    # "geology_fr",
-    # "soil_fr",
-    # "lulc_fr",
-]
+# Single source of truth: 17 Sonker Frequency Ratio factors (no aspect_fr).
+FEATURE_COLUMNS: list[str] = [spec.column for spec in FEATURE_SPECS]
 
 # ─── TARGET COLUMN ──────────────────────────────────────────────────────────
 TARGET_COLUMN: str = "target"

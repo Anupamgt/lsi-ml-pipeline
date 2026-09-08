@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
 """
-extract_training_data.py  (v4 — definitive QGIS FR rasters)
-============================================================
-Uses the final, authoritative FR rasters as they appear in BTP_1.qgz:
+extract_training_data.py — Sample 17 Sonker FR class rasters → training CSV
+===========================================================================
+Loads class→FR maps from ``data/fr_class_table_17factor.csv`` (raw ``FR`` column),
+samples all registered class GeoTIFFs under ``final_maps/sonker_17/`` at
+landslide points and buffered pseudo-absences (EPSG:32646), and writes
+``data/landslide_training_data.csv`` with columns::
 
-  Slope FR    → ~/Slope_fr_Final.tif          (EPSG:4326, already FR-weighted)
-  Aspect FR   → ~/Aspect_FR_final.tif         (EPSG:4326, already FR-weighted)
-  Elevation   → ~/Elevation_reclass_final.tif (EPSG:32646, class 1–4)
-                mapped to FR via cross-tab:
-                  class 1 → 0.0000
-                  class 2 → 0.3553
-                  class 3 → 0.5401
-                  class 4 → 3.2359
+    x, y, <17 *_fr features>, target
 
-Coordinate handling
--------------------
-  Slope/Aspect rasters are EPSG:4326 → sample landslide points directly in lon/lat.
-  Elevation raster is EPSG:32646     → reproject landslide points to UTM first.
-  Pseudo-absence pool is built from the EPSG:4326 slope raster valid pixels.
+Repo-relative paths only — no machine-specific absolute paths.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import geopandas as gpd
@@ -30,46 +23,74 @@ import pandas as pd
 import rasterio
 from rasterio.transform import rowcol, xy as raster_xy
 
-# ─── PATHS ────────────────────────────────────────────────────────────────────
-HOME_DIR     = Path("/Users/rakeshkumar")
-AIZWAL_DIR   = Path("/Users/rakeshkumar/Desktop/AIZWAL")
-PIPELINE_DIR = Path("/Users/rakeshkumar/.gemini/antigravity/scratch/lsi_ml_pipeline")
-OUTPUT_CSV   = PIPELINE_DIR / "data" / "landslide_training_data.csv"
-OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+from lsi_pipeline.config import FEATURE_COLUMNS, MIN_SAMPLE_BUFFER_M, RANDOM_STATE
+from lsi_pipeline.feature_registry import (
+    FEATURE_SPECS,
+    FR_TABLE_PATH,
+    LANDSLIDE_POINTS_PATH,
+    TARGET_CRS,
+    TRAINING_CSV_PATH,
+    missing_rasters,
+)
 
-RANDOM_SEED  = 42
-MIN_BUFFER_M = 500.0     # min distance from any landslide point (metres, UTM)
-PIXEL_STRIDE = 10        # stride for building the valid-pixel candidate pool
-
-# ─── DEFINITIVE RASTERS ───────────────────────────────────────────────────────
-# Both in EPSG:4326 — sample lon/lat directly (no reprojection)
-SLOPE_FR_4326  = HOME_DIR / "Slope_fr_Final.tif"        # FR already applied
-ASPECT_FR_4326 = HOME_DIR / "Aspect_FR_final.tif"       # FR already applied
-
-# EPSG:32646 — need to reproject points to UTM for sampling
-ELEV_CLS_32646 = HOME_DIR / "Elevation_reclass_final.tif"  # class integers 1–4
-
-# Class → FR lookup (derived from cross-tabulation with Elevation_FR_final.tif)
-ELEV_FR_MAP: dict[int, float] = {
-    1: 0.0000,
-    2: 0.35529,
-    3: 0.54013,
-    4: 3.23588,
-}
+PIXEL_STRIDE = 10  # stride for building the valid-pixel candidate pool
+DISTANCE_BATCH = 50_000
 
 
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
+# ─── FR TABLE ────────────────────────────────────────────────────────────────
+
+
+def load_class_to_fr_maps(fr_table_path: Path) -> dict[str, dict[int, float]]:
+    """Build ``{fr_table_key: {class_int: raw_FR}}`` from the FR class CSV.
+
+    Prefers the raw ``FR`` column (not ``FRn``).
+    """
+    if not fr_table_path.exists():
+        raise FileNotFoundError(f"FR class table not found: {fr_table_path}")
+
+    df = pd.read_csv(fr_table_path)
+    required = {"factor", "class", "FR"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"FR table missing columns {sorted(missing)}: {fr_table_path}")
+
+    maps: dict[str, dict[int, float]] = {}
+    for factor, group in df.groupby("factor", sort=False):
+        class_map: dict[int, float] = {}
+        for _, row in group.iterrows():
+            cls = int(row["class"])
+            class_map[cls] = float(row["FR"])
+        maps[str(factor)] = class_map
+    return maps
+
+
+def class_to_fr(cls_arr: np.ndarray, fr_map: dict[int, float]) -> np.ndarray:
+    """Map integer class values → raw FR. Unknown / NaN classes stay NaN."""
+    out = np.full(len(cls_arr), np.nan, dtype=np.float64)
+    finite = np.isfinite(cls_arr)
+    if not finite.any():
+        return out
+    # Round to nearest int for float class codes from GeoTIFF
+    rounded = np.rint(cls_arr[finite]).astype(int)
+    mapped = np.full(rounded.shape, np.nan, dtype=np.float64)
+    for cls, fr in fr_map.items():
+        mapped[rounded == cls] = fr
+    out[finite] = mapped
+    return out
+
+
+# ─── RASTER HELPERS ──────────────────────────────────────────────────────────
 
 
 def sample_raster(path: Path, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
-    """Nearest-pixel sampling. Returns NaN for nodata / out-of-bounds."""
+    """Nearest-pixel sampling in the raster CRS. Returns NaN for nodata / OOB."""
     with rasterio.open(path) as src:
-        nd   = src.nodata
+        nd = src.nodata
         band = src.read(1).astype(np.float64)
         rows, cols = rowcol(src.transform, xs, ys)
         rows, cols = np.asarray(rows), np.asarray(cols)
         nr, nc = band.shape
-        out = np.full(len(xs), np.nan)
+        out = np.full(len(xs), np.nan, dtype=np.float64)
         for i, (r, c) in enumerate(zip(rows, cols)):
             if 0 <= r < nr and 0 <= c < nc:
                 v = band[r, c]
@@ -79,21 +100,13 @@ def sample_raster(path: Path, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
     return out
 
 
-def elev_class_to_fr(cls_arr: np.ndarray) -> np.ndarray:
-    """Map integer elevation class (1–4) → FR value."""
-    out = np.full(len(cls_arr), np.nan)
-    for c, fr in ELEV_FR_MAP.items():
-        out[cls_arr == c] = fr
-    return out
-
-
-def build_valid_pixel_pool_4326(
+def build_valid_pixel_pool(
     raster_path: Path,
     stride: int = PIXEL_STRIDE,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return lon/lat centroids of valid (non-zero, non-nodata) pixels at stride."""
+    """Return UTM (x, y) centroids of valid (non-nodata, positive class) pixels."""
     with rasterio.open(raster_path) as src:
-        nd  = src.nodata
+        nd = src.nodata
         arr = src.read(1)
         nr, nc = arr.shape
         ri = np.arange(0, nr, stride)
@@ -106,150 +119,198 @@ def build_valid_pixel_pool_4326(
         else:
             valid = np.isfinite(vals) & (vals > 0)
         rr_v, cc_v = rr[valid], cc[valid]
-        lons, lats = raster_xy(src.transform, rr_v, cc_v)
-    return np.asarray(lons), np.asarray(lats)
+        xs, ys = raster_xy(src.transform, rr_v, cc_v)
+    return np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
 
 
-# ─── MAIN ─────────────────────────────────────────────────────────────────────
+def sample_all_features(
+    xs: np.ndarray,
+    ys: np.ndarray,
+    fr_maps: dict[str, dict[int, float]],
+) -> dict[str, np.ndarray]:
+    """Sample every registered class raster and map classes → raw FR."""
+    out: dict[str, np.ndarray] = {}
+    for spec in FEATURE_SPECS:
+        if spec.fr_table_key not in fr_maps:
+            raise KeyError(
+                f"FR table has no factor '{spec.fr_table_key}' "
+                f"(needed for feature '{spec.column}')"
+            )
+        cls = sample_raster(spec.raster_path, xs, ys)
+        out[spec.column] = class_to_fr(cls, fr_maps[spec.fr_table_key])
+    return out
+
+
+def all_features_finite(feat: dict[str, np.ndarray]) -> np.ndarray:
+    """Boolean mask: True where every feature value is finite."""
+    mask = np.ones(len(next(iter(feat.values()))), dtype=bool)
+    for col in FEATURE_COLUMNS:
+        mask &= np.isfinite(feat[col])
+    return mask
+
+
+# ─── MAIN ────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
     print("\n" + "═" * 68)
-    print("  DATA EXTRACTION v4 — Definitive QGIS FR rasters (BTP_1.qgz)")
+    print("  DATA EXTRACTION — 17 Sonker FR class rasters → training CSV")
     print("═" * 68)
 
-    rng = np.random.default_rng(RANDOM_SEED)
+    missing = missing_rasters()
+    if missing:
+        lines = "\n".join(f"  - {p}" for p in missing)
+        raise FileNotFoundError(
+            f"Missing {len(missing)} registered GeoTIFF(s). "
+            f"Expected under final_maps/sonker_17/:\n{lines}"
+        )
 
-    # ── 1. Load landslide points in both CRS ─────────────────────────────
-    print("\n[1] Loading 22 Aizawl landslide points …")
-    gdf_4326 = gpd.read_file(AIZWAL_DIR / "Aizawl_Points_UTM.gpkg")
-    # natively EPSG:4326 despite the name
-    if str(gdf_4326.crs) != "EPSG:4326":
-        gdf_4326 = gdf_4326.to_crs("EPSG:4326")
-    ls_lon = gdf_4326.geometry.x.values
-    ls_lat = gdf_4326.geometry.y.values
+    if not LANDSLIDE_POINTS_PATH.exists():
+        raise FileNotFoundError(
+            f"Landslide points not found: {LANDSLIDE_POINTS_PATH}"
+        )
 
-    gdf_utm = gdf_4326.to_crs("EPSG:32646")
-    ls_utmx = gdf_utm.geometry.x.values
-    ls_utmy = gdf_utm.geometry.y.values
-    print(f"    {len(ls_lon)} points  |  lon [{ls_lon.min():.4f}, {ls_lon.max():.4f}]  "
-          f"lat [{ls_lat.min():.4f}, {ls_lat.max():.4f}]")
+    rng = np.random.default_rng(RANDOM_STATE)
+    fr_maps = load_class_to_fr_maps(FR_TABLE_PATH)
+    print(f"\n[0] FR table: {FR_TABLE_PATH.name}  "
+          f"({len(fr_maps)} factors, raw FR lookups)")
 
-    # ── 2. Sample FR rasters at landslide points ──────────────────────────
-    print("\n[2] Sampling definitive QGIS FR rasters at landslide points …")
-    ls_slope_fr  = sample_raster(SLOPE_FR_4326,  ls_lon, ls_lat)
-    ls_aspect_fr = sample_raster(ASPECT_FR_4326, ls_lon, ls_lat)
-    ls_elev_cls  = sample_raster(ELEV_CLS_32646, ls_utmx, ls_utmy)
-    ls_elev_fr   = elev_class_to_fr(ls_elev_cls)
+    # ── 1. Landslide points in EPSG:32646 ────────────────────────────────
+    print(f"\n[1] Loading landslide points from {LANDSLIDE_POINTS_PATH.name} …")
+    gdf = gpd.read_file(LANDSLIDE_POINTS_PATH)
+    if gdf.crs is None:
+        raise ValueError(f"Landslide points have no CRS: {LANDSLIDE_POINTS_PATH}")
+    if str(gdf.crs) != TARGET_CRS:
+        gdf = gdf.to_crs(TARGET_CRS)
+    ls_x = gdf.geometry.x.to_numpy(dtype=np.float64)
+    ls_y = gdf.geometry.y.to_numpy(dtype=np.float64)
+    n_pos = len(ls_x)
+    print(f"    {n_pos} points  |  x [{ls_x.min():.1f}, {ls_x.max():.1f}]  "
+          f"y [{ls_y.min():.1f}, {ls_y.max():.1f}]  CRS={TARGET_CRS}")
 
-    print(f"    slope_fr     : valid={np.isfinite(ls_slope_fr).sum()}/22  "
-          f"range=[{np.nanmin(ls_slope_fr):.4f}, {np.nanmax(ls_slope_fr):.4f}]")
-    print(f"    aspect_fr    : valid={np.isfinite(ls_aspect_fr).sum()}/22  "
-          f"range=[{np.nanmin(ls_aspect_fr):.4f}, {np.nanmax(ls_aspect_fr):.4f}]")
-    print(f"    elevation_fr : valid={np.isfinite(ls_elev_fr).sum()}/22  "
-          f"range=[{np.nanmin(ls_elev_fr):.4f}, {np.nanmax(ls_elev_fr):.4f}]")
-    print(f"    elev classes : {np.unique(ls_elev_cls[np.isfinite(ls_elev_cls)]).astype(int).tolist()}")
+    # ── 2. Sample 17 FR features at landslide points ─────────────────────
+    print("\n[2] Sampling 17 class rasters at landslide points …")
+    ls_feat = sample_all_features(ls_x, ls_y, fr_maps)
+    ls_ok = all_features_finite(ls_feat)
+    print(f"    Valid (all 17 finite): {ls_ok.sum()}/{n_pos}")
+    for col in FEATURE_COLUMNS:
+        arr = ls_feat[col]
+        print(f"    {col:<22} valid={np.isfinite(arr).sum()}/{n_pos}  "
+              f"range=[{np.nanmin(arr):.4f}, {np.nanmax(arr):.4f}]")
+    if not np.all(ls_ok):
+        bad = np.where(~ls_ok)[0].tolist()
+        raise RuntimeError(
+            f"Landslide points missing one or more FR values at indices {bad}. "
+            "Check CRS alignment and class→FR coverage."
+        )
 
-    # ── 3. Build valid-pixel pool in EPSG:4326 ────────────────────────────
-    print(f"\n[3] Building valid-pixel pool (stride={PIXEL_STRIDE}) from Slope_fr_Final.tif …")
-    pool_lon, pool_lat = build_valid_pixel_pool_4326(SLOPE_FR_4326, stride=PIXEL_STRIDE)
-    print(f"    Pool size: {len(pool_lon):,} candidate pixel centroids")
+    # ── 3. Valid-pixel pool from slope class raster (EPSG:32646) ─────────
+    pool_raster = next(s for s in FEATURE_SPECS if s.column == "slope_fr").raster_path
+    print(f"\n[3] Building valid-pixel pool (stride={PIXEL_STRIDE}) "
+          f"from {pool_raster.name} …")
+    pool_x, pool_y = build_valid_pixel_pool(pool_raster, stride=PIXEL_STRIDE)
+    print(f"    Pool size: {len(pool_x):,} candidate pixel centroids")
 
-    # ── 4. Buffer filter in UTM (metric distances) ────────────────────────
-    print(f"\n[4] Filtering pool: ≥{MIN_BUFFER_M:.0f} m from every landslide point …")
-    # Convert pool lon/lat → UTM for distance check
-    pool_gdf = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(pool_lon, pool_lat),
-        crs="EPSG:4326"
-    ).to_crs("EPSG:32646")
-    pool_utmx = pool_gdf.geometry.x.values
-    pool_utmy = pool_gdf.geometry.y.values
+    # ── 4. Buffer filter (≥ MIN_SAMPLE_BUFFER_M from every landslide) ────
+    print(f"\n[4] Filtering pool: ≥{MIN_SAMPLE_BUFFER_M:.0f} m from every "
+          "landslide point …")
+    ls_coords = np.stack([ls_x, ls_y], axis=1)
+    keep = np.zeros(len(pool_x), dtype=bool)
+    for start in range(0, len(pool_x), DISTANCE_BATCH):
+        end = min(start + DISTANCE_BATCH, len(pool_x))
+        batch = np.stack([pool_x[start:end], pool_y[start:end]], axis=1)
+        dists = np.linalg.norm(
+            batch[:, None, :] - ls_coords[None, :, :], axis=2
+        ).min(axis=1)
+        keep[start:end] = dists >= MIN_SAMPLE_BUFFER_M
 
-    ls_coords = np.stack([ls_utmx, ls_utmy], axis=1)
-    BATCH = 50_000
-    keep = np.zeros(len(pool_utmx), dtype=bool)
-    for start in range(0, len(pool_utmx), BATCH):
-        end = min(start + BATCH, len(pool_utmx))
-        batch = np.stack([pool_utmx[start:end], pool_utmy[start:end]], axis=1)
-        dists = np.linalg.norm(batch[:, None, :] - ls_coords[None, :, :], axis=2).min(axis=1)
-        keep[start:end] = dists >= MIN_BUFFER_M
+    cand_x, cand_y = pool_x[keep], pool_y[keep]
+    print(f"    Candidates after buffer: {len(cand_x):,}")
+    if len(cand_x) == 0:
+        raise RuntimeError("No pseudo-absence candidates remain after buffer filter.")
 
-    cand_lon = pool_lon[keep]
-    cand_lat = pool_lat[keep]
-    print(f"    Candidates after filter: {len(cand_lon):,}")
+    # ── 5. Select & validate pseudo-absences (all 17 finite) ─────────────
+    print(f"\n[5] Selecting {n_pos} pseudo-absence locations "
+          "(require finite values on all 17 features) …")
+    # Oversample then filter; reshuffle if needed
+    n_needed = n_pos
+    max_attempts = 5
+    neg_x = neg_y = None
+    neg_feat: dict[str, np.ndarray] | None = None
+    remaining_idx = np.arange(len(cand_x))
+    rng.shuffle(remaining_idx)
+    collected_x: list[float] = []
+    collected_y: list[float] = []
+    collected_feat: dict[str, list[float]] = {c: [] for c in FEATURE_COLUMNS}
 
-    # ── 5. Randomly select 22 pseudo-absence locations ────────────────────
-    print("\n[5] Selecting 22 pseudo-absence locations …")
-    idx = rng.choice(len(cand_lon), size=min(22, len(cand_lon)), replace=False)
-    neg_lon = cand_lon[idx]
-    neg_lat = cand_lat[idx]
+    attempt = 0
+    cursor = 0
+    while len(collected_x) < n_needed and attempt < max_attempts:
+        attempt += 1
+        take = min(max(n_needed * 4, n_needed), len(remaining_idx) - cursor)
+        if take <= 0:
+            break
+        batch_idx = remaining_idx[cursor: cursor + take]
+        cursor += take
+        bx = cand_x[batch_idx]
+        by = cand_y[batch_idx]
+        bf = sample_all_features(bx, by, fr_maps)
+        ok = all_features_finite(bf)
+        for i in np.where(ok)[0]:
+            if len(collected_x) >= n_needed:
+                break
+            collected_x.append(float(bx[i]))
+            collected_y.append(float(by[i]))
+            for col in FEATURE_COLUMNS:
+                collected_feat[col].append(float(bf[col][i]))
+        print(f"    attempt {attempt}: +{int(ok.sum())} valid "
+              f"(have {len(collected_x)}/{n_needed})")
 
-    # Convert to UTM for elevation raster sampling
-    neg_gdf = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(neg_lon, neg_lat), crs="EPSG:4326"
-    ).to_crs("EPSG:32646")
-    neg_utmx = neg_gdf.geometry.x.values
-    neg_utmy = neg_gdf.geometry.y.values
+    if len(collected_x) < n_needed:
+        raise RuntimeError(
+            f"Could only find {len(collected_x)}/{n_needed} pseudo-absences "
+            "with finite values on all 17 features."
+        )
 
-    # ── 6. Sample FR rasters at pseudo-absence locations ──────────────────
-    print("[6] Sampling FR rasters at pseudo-absence locations …")
-    neg_slope_fr  = sample_raster(SLOPE_FR_4326,  neg_lon, neg_lat)
-    neg_aspect_fr = sample_raster(ASPECT_FR_4326, neg_lon, neg_lat)
-    neg_elev_cls  = sample_raster(ELEV_CLS_32646, neg_utmx, neg_utmy)
-    neg_elev_fr   = elev_class_to_fr(neg_elev_cls)
+    neg_x = np.asarray(collected_x[:n_needed], dtype=np.float64)
+    neg_y = np.asarray(collected_y[:n_needed], dtype=np.float64)
+    neg_feat = {
+        col: np.asarray(collected_feat[col][:n_needed], dtype=np.float64)
+        for col in FEATURE_COLUMNS
+    }
+    print(f"    Selected {n_needed} pseudo-absences with all 17 features finite")
 
-    valid_neg = np.isfinite(neg_slope_fr) & np.isfinite(neg_aspect_fr) & np.isfinite(neg_elev_fr)
-    print(f"    Valid (all 3 non-null): {valid_neg.sum()}/{len(neg_lon)}")
-    print(f"    slope_fr     : [{np.nanmin(neg_slope_fr):.4f}, {np.nanmax(neg_slope_fr):.4f}]")
-    print(f"    aspect_fr    : [{np.nanmin(neg_aspect_fr):.4f}, {np.nanmax(neg_aspect_fr):.4f}]")
-    print(f"    elevation_fr : [{np.nanmin(neg_elev_fr):.4f}, {np.nanmax(neg_elev_fr):.4f}]")
+    # ── 6. Assemble training CSV ─────────────────────────────────────────
+    print("\n[6] Assembling landslide_training_data.csv …")
+    pos_data: dict[str, np.ndarray] = {"x": ls_x, "y": ls_y}
+    pos_data.update(ls_feat)
+    pos_data["target"] = np.ones(n_pos, dtype=int)
+    df_pos = pd.DataFrame(pos_data)
 
-    # Fill residual NaNs with column means (rare edge pixels)
-    for arr in [neg_slope_fr, neg_aspect_fr, neg_elev_fr]:
-        if not np.all(np.isfinite(arr)):
-            arr[~np.isfinite(arr)] = np.nanmean(arr)
+    neg_data: dict[str, np.ndarray] = {"x": neg_x, "y": neg_y}
+    neg_data.update(neg_feat)
+    neg_data["target"] = np.zeros(n_needed, dtype=int)
+    df_neg = pd.DataFrame(neg_data)
 
-    # ── 7. Assemble training CSV ───────────────────────────────────────────
-    print("\n[7] Assembling landslide_training_data.csv …")
-    df_pos = pd.DataFrame({
-        "x": ls_utmx, "y": ls_utmy,
-        "slope_fr": ls_slope_fr, "aspect_fr": ls_aspect_fr,
-        "elevation_fr": ls_elev_fr, "target": 1,
-    })
-    df_neg = pd.DataFrame({
-        "x": neg_utmx, "y": neg_utmy,
-        "slope_fr": neg_slope_fr, "aspect_fr": neg_aspect_fr,
-        "elevation_fr": neg_elev_fr, "target": 0,
-    })
-    df = pd.concat([df_pos, df_neg], ignore_index=True)
-    df = df.sample(frac=1, random_state=RANDOM_SEED).reset_index(drop=True)
+    col_order = ["x", "y", *FEATURE_COLUMNS, "target"]
+    df = pd.concat([df_pos, df_neg], ignore_index=True)[col_order]
+    df = df.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
 
-    # Fill any remaining NaNs
-    for col in ["slope_fr", "aspect_fr", "elevation_fr"]:
-        if df[col].isnull().any():
-            df[col].fillna(df[col].mean(), inplace=True)
+    if df[FEATURE_COLUMNS].isnull().any().any():
+        raise RuntimeError("Output CSV still contains null feature values.")
 
-    # ── 8. Class overlap report ───────────────────────────────────────────
-    pos = df[df.target == 1]
-    neg = df[df.target == 0]
-    print("\n  ─── CLASS OVERLAP (higher = better challenge for model) ───")
-    print(f"  {'Feature':<16}  {'Positive':<22}  {'Negative':<22}  Overlap")
-    print("  " + "─" * 76)
-    for col in ["slope_fr", "aspect_fr", "elevation_fr"]:
-        pm, px = pos[col].min(), pos[col].max()
-        nm, nx = neg[col].min(), neg[col].max()
-        ov = max(0.0, min(px, nx) - max(pm, nm))
-        print(f"  {col:<16}  [{pm:.4f}, {px:.4f}]        "
-              f"[{nm:.4f}, {nx:.4f}]        {ov:.4f}")
-
-    df.to_csv(OUTPUT_CSV, index=False)
-    print(f"\n  ✓ Saved → {OUTPUT_CSV}  (shape: {df.shape})")
-
-    print("\n  Per-class statistics:")
-    print(df.groupby("target")[["slope_fr","aspect_fr","elevation_fr"]]
-            .agg(["min","mean","max"]).round(4).to_string())
+    TRAINING_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(TRAINING_CSV_PATH, index=False)
+    print(f"\n  ✓ Saved → {TRAINING_CSV_PATH}  (shape: {df.shape})")
+    print(f"  columns: {list(df.columns)}")
+    print("\n  Per-class feature means:")
+    print(df.groupby("target")[FEATURE_COLUMNS].mean().round(4).to_string())
     print()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # noqa: BLE001 — CLI entrypoint
+        print(f"\nERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
