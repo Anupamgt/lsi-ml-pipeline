@@ -5,7 +5,7 @@ run_pipeline.py — Main entry point for the LSI ML Pipeline.
 Orchestrates all 7 steps end-to-end via argparse CLI.
 
 Usage examples:
-  # Run with only 3 currently available features (no grid):
+  # Run with all 17 Sonker FR features (no grid):
   python run_pipeline.py --input data/landslide_training_data.csv
 
   # Run with pre-built full dataset + susceptibility grid:
