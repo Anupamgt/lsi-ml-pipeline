@@ -1,0 +1,91 @@
+# Stage A zero-shot VLM baseline (Aizawl = test set only).
+# Merge owners: tiles → ``tiles:``; prompts/clients → ``prompt:`` / ``model:``; eval → ``eval:``.
+# Locked FR/ML comparisons: RF 0.8337 / LR 0.7707 (outputs_vlm/baseline.md).
+
+tiles:
+  window_size_px: 64
+  resolution_m: 30.0
+  crs: EPSG:32646
+  output_dir: outputs_vlm/tiles
+  training_csv: data/landslide_training_data.csv
+  hillshade_path: final_maps/HILLSHADE_2.tif
+  slope_path: final_maps/Slope_FINAL.tif
+  lsi_zones_path: final_maps/LSI_Final_Zones.tif
+  # Honest baseline leaves LSI overlay off; eval toggles this per ablation.
+  include_lsi_overlay: false
+  slope_alpha: 0.55
+  lsi_alpha: 0.35
+  slope_vmax_deg: 60.0
+  satellite:
+    enabled: true
+    stac_url: https://planetarycomputer.microsoft.com/api/stac/v1
+    collection: sentinel-2-l2a
+    months: [11, 12, 1, 2]
+    year_start: 2020
+    year_end: 2024
+    max_cloud: 40
+    max_items: 4
+    assets: [B04, B03, B02]   # Sentinel-2 L2A true-colour (R,G,B)
+  # Coarse study-area grid API only — do not run full-grid VLM until Stage A review.
+  grid:
+    enabled: false
+    tile_size_px: 64
+    resolution_m: 30.0
+    overlap_px: 0
+    bbox: null                # [x_min, y_min, x_max, y_max] in crs; null → points + buffer
+    buffer_m: 2000.0
+
+prompt:
+  # Metres across the tile window (64 px × 30 m ≈ 1920 m by default).
+  scale_bar_m: 1920
+  include_numbers: true
+  # Honest baseline leaves LSI overlay off (see VLM_KICKOFF A4 ablations).
+  include_lsi_legend: false
+  fr_class_table: data/fr_class_table_17factor.csv
+  # Optional override; null → built-in Mizoram fold-belt / monsoon context.
+  regional_context: null
+  stack_tif: outputs_vlm/aizawl_stack.tif
+  stack_stats: outputs_vlm/aizawl_stack_stats.json
+
+model:
+  # anthropic | gemini | openai | ollama  (CLI --backend overrides)
+  backend: ollama
+  name: qwen2.5vl
+  temperature: 0.0
+  max_retries: 3
+  retry_backoff_s: 1.5
+  use_cache: true
+  cache_dir: outputs_vlm/cache
+  ollama_base_url: http://127.0.0.1:11434
+  # Vision + long prompts often exceed 120s on CPU/partial-GPU cold starts.
+  timeout_s: 600
+
+eval:
+  n_repeats: 3
+  n_examples: 5
+  # With temperature 0 + cache, repeat variance is usually ~0.
+  stability_bust_cache: false
+  skip_satellite: true   # set false for live STAC RGB (slow / network)
+  output_results: outputs_vlm/stage_a_results.md
+  output_examples: outputs_vlm/stage_a_examples.md
+  locked_baselines:
+    rf_auc: 0.8337
+    lr_auc: 0.7707
+  # Required ablations (A4). no_lsi_* is the honest baseline to report.
+  ablations:
+    - name: no_lsi_numbers
+      include_lsi: false
+      include_numbers: true
+      honest_baseline: true
+    - name: with_lsi_numbers
+      include_lsi: true
+      include_numbers: true
+    - name: no_lsi_image_only
+      include_lsi: false
+      include_numbers: false
+    - name: with_lsi_image_only
+      include_lsi: true
+      include_numbers: false
+
+# Secrets: set ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY in the
+# environment only. Never commit keys. Ollama needs no key.
