@@ -18,9 +18,14 @@ env/
 *.ipynb
 
 # ─── Pipeline outputs ─────────────────────────────────────────────────────────
-# Trained models and scalers (binary, large)
+# Ephemeral local runs (regenerate anytime)
 outputs*/
 outputs_real/
+
+# Curated committed results (metrics, plots, classified maps) — allow results/
+# but still ignore heavy pickles inside results/
+!results/
+!results/**
 
 # ─── QGIS / GIS files outside final_maps/ ─────────────────────────────────────
 # Ignore raw uncompressed rasters outside our compressed final_maps directory
@@ -49,6 +54,9 @@ outputs_real/
 # ─── Pickle / binary model files ─────────────────────────────────────────────
 *.pkl
 *.joblib
+# Keep ignoring pickles even under results/ (regenerate via run_pipeline.py)
+results/**/*.pkl
+results/**/*.joblib
 
 # ─── OS / editor ─────────────────────────────────────────────────────────────
 .DS_Store
