@@ -1,0 +1,94 @@
+{
+  "locked_baselines": {
+    "rf_auc": 0.8337,
+    "lr_auc": 0.7707
+  },
+  "backend": "ollama",
+  "model": "qwen2.5vl",
+  "used_mock": false,
+  "honest_ablation": "no_lsi_numbers",
+  "summary": {
+    "no_lsi_numbers": {
+      "n_repeats": 3,
+      "auc_score_mean": 0.40702479338842973,
+      "auc_score_std": 0.0,
+      "auc_class_mean": 0.4070247933884298,
+      "auc_class_std": 0.0,
+      "auc_score_runs": [
+        0.40702479338842973,
+        0.40702479338842973,
+        0.40702479338842973
+      ],
+      "auc_class_runs": [
+        0.4070247933884298,
+        0.4070247933884298,
+        0.4070247933884298
+      ],
+      "used_mock": false,
+      "n_errors_total": 0
+    },
+    "with_lsi_numbers": {
+      "n_repeats": 3,
+      "auc_score_mean": 0.45041322314049587,
+      "auc_score_std": 0.0,
+      "auc_class_mean": 0.41528925619834717,
+      "auc_class_std": 0.0,
+      "auc_score_runs": [
+        0.45041322314049587,
+        0.45041322314049587,
+        0.45041322314049587
+      ],
+      "auc_class_runs": [
+        0.41528925619834717,
+        0.41528925619834717,
+        0.41528925619834717
+      ],
+      "used_mock": false,
+      "n_errors_total": 0
+    },
+    "no_lsi_image_only": {
+      "n_repeats": 3,
+      "auc_score_mean": 0.47727272727272724,
+      "auc_score_std": 0.0,
+      "auc_class_mean": 0.5,
+      "auc_class_std": 0.0,
+      "auc_score_runs": [
+        0.47727272727272724,
+        0.47727272727272724,
+        0.47727272727272724
+      ],
+      "auc_class_runs": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "used_mock": false,
+      "n_errors_total": 0
+    },
+    "with_lsi_image_only": {
+      "n_repeats": 3,
+      "auc_score_mean": 0.6890495867768595,
+      "auc_score_std": 0.0,
+      "auc_class_mean": 0.6497933884297521,
+      "auc_class_std": 0.0,
+      "auc_score_runs": [
+        0.6890495867768595,
+        0.6890495867768595,
+        0.6890495867768595
+      ],
+      "auc_class_runs": [
+        0.6497933884297521,
+        0.6497933884297521,
+        0.6497933884297521
+      ],
+      "used_mock": false,
+      "n_errors_total": 0
+    }
+  },
+  "n_points": 44,
+  "imagery_window": {
+    "start": "2020-11-01",
+    "end": "2024-02-28"
+  },
+  "n_event_dates_matched": 5
+}
