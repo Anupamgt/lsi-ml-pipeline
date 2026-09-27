@@ -9,7 +9,7 @@
 
 The repo already has a validated **Frequency Ratio (FR) + ML** landslide susceptibility pipeline for **Aizawl, Mizoram**:
 17 conditioning factors, 22 mapped landslides + 22 pseudo-absences, buffered spatial LOOCV with a 1 km exclusion radius
-(RF AUC 0.8275, LR AUC 0.7707).
+(**locked Phase 0 benchmarks:** RF AUC **0.8337**, LR AUC **0.7707**; see `outputs_vlm/baseline.md`. An older kickoff draft cited RF 0.8275 — do not use that for comparisons).
 
 The next step is a **vision-language model (VLM)** layer, built in two stages:
 
@@ -41,7 +41,7 @@ The next step is a **vision-language model (VLM)** layer, built in two stages:
 ### Repo state at hand-off (read carefully)
 
 - **Commits are still being pushed** from this branch. Run `git status` and `git log origin/feature/nhess-upgrades-portability..HEAD` first. If anything is unpushed or uncommitted, **stop and tell the user**. Don't branch off a dirty tree.
-- **No `outputs_*/` folder exists.** The models, ROC curves and susceptibility maps from the earlier demo run were never committed (`outputs*/` is gitignored). The quoted RF 0.8275 / LR 0.7707 are **not reproducible from repo artifacts yet**. Phase 0 must regenerate them.
+- **No `outputs_*/` folder exists.** The models, ROC curves and susceptibility maps from the earlier demo run were never committed (`outputs*/` is gitignored). Phase 0 regenerates them; the **locked** comparisons are RF **0.8337** / LR **0.7707** (matches `results/aizawl_17fr/`; an older draft quoted RF 0.8275). Canonical reference: `outputs_vlm/baseline.md`.
 - **The NHESS-style upgrades are not finished.** `pu_bagging.py` (Positive-Unlabeled bagging), `feature_selection.py` (Genetic Algorithm selection) and `train_xgboost()` in `model_training.py` exist in the working tree but are untested and unvalidated, and the current evaluation doesn't use them. **Don't depend on them** for anything the VLM work needs. If Stage B needs PU sampling, write tests for `pu_bagging.py` first and confirm with the user.
 - **The pipeline is still Aizawl-only.** The FR layers are local reclassifications, so the pipeline can't move to another study area without rebuilding them. `configs/aizawl.yaml` + `study_area.py` are the start of portability work, not a finished feature. That is also why Stage B has to rebuild factors from **global** sources rather than reuse the Aizawl FR layers.
 
@@ -69,7 +69,7 @@ The next step is a **vision-language model (VLM)** layer, built in two stages:
 
 ## 4. Phase 0: baseline, audit and continuous stack (checkpoint)
 
-0. **Regenerate the FR/ML baseline.** Follow README §9: `pip install -e .[dev]`, `python extract_training_data.py`, then the full buffered-LOOCV run into `outputs_real/`, with RF and LR only (the XGBoost/PU/GA paths stay off). Record the AUCs in `outputs_vlm/baseline.md`. If they differ from 0.8275 / 0.7707, **report the difference and stop**. Every later comparison uses these regenerated numbers.
+0. **Regenerate the FR/ML baseline.** Follow README §9: `pip install -e .[dev]`, `python extract_training_data.py`, then the full buffered-LOOCV run into `outputs_real/`, with RF and LR only (the XGBoost/PU/GA paths stay off). Record the AUCs in `outputs_vlm/baseline.md`. **Locked benchmarks (user-approved):** RF **0.8337**, LR **0.7707** (match `results/aizawl_17fr/`; older kickoff draft cited RF 0.8275 — Δ +0.0062). Every later comparison uses these locked numbers.
 1. `lsi_vlm/audit.py`: for every raster in `final_maps/` and `final_maps/sonker_17/`, print CRS, resolution, extent, dtype, nodata, unique-value count, and whether the raster is categorical or continuous. Write `outputs_vlm/audit.md`, including issues 1–4 above with numbers.
 2. List which continuous source layers exist locally and which must be rebuilt. For each missing one, propose a source:
 
@@ -109,7 +109,7 @@ The prompt includes: the colour legend and scale bar in metres, the numeric valu
 A single `VLMClient` interface with backends: Anthropic (Claude), Google (Gemini), OpenAI, and **local Ollama** (e.g. `qwen2.5vl`), so one free option always exists. Temperature 0. Retry and parse failures are logged, never silently dropped.
 
 ### A4. Evaluation (`lsi_vlm/eval_stage_a.py`)
-- ROC-AUC of `score` (and of the ordinal `class`) against `target` over the 44 points. Put it in a table next to RF 0.8275 and LR 0.7707.
+- ROC-AUC of `score` (and of the ordinal `class`) against `target` over the 44 points. Put it in a table next to locked RF **0.8337** and LR **0.7707**.
 - **Required ablations**, because each one controls a leak:
   - **With vs. without the LSI-zone overlay.** With LSI zones in the image, the VLM can just read the FR answer back. The no-LSI run is the honest baseline and the one to report.
   - **Numbers in prompt vs. image only.** This shows whether the model uses the pixels or the text.

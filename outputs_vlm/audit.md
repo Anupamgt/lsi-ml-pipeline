@@ -125,3 +125,9 @@ python -m lsi_vlm.stack --out outputs_vlm/aizawl_stack.tif --stats outputs_vlm/a
 ```
 
 See `outputs_vlm/aizawl_stack_stats.json` for band names, kinds, and per-band mean/std/min/max. The GeoTIFF is gitignored (`*.tif` / `outputs*/`).
+
+### Stage A constraint — class bands vs continuous
+
+Of the **21** bands in `aizawl_stack.tif`, only **6 are continuous**: `rainfall_mm`, `gravity_mgal`, `slope_final_deg`, `elevation_m`, `hillshade`, `slope_dem_deg`. The other **15** are **integer class codes** (not continuous physical values, not one-hot). Phase 0's listing of missing continuous rebuilds (`missing_continuous_rebuild` in the stats JSON; table above) is sufficient for rebuild planning.
+
+**Stage A prompts must use class names/labels for those 15 bands** until TWI, SPI, STI, TRI, distance layers, and NDVI are rebuilt as continuous. Full note: `outputs_vlm/stack_notes.md`. Locked FR/ML benchmarks for comparisons: RF **0.8337** / LR **0.7707** (`outputs_vlm/baseline.md`).

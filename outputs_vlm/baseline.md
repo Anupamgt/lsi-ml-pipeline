@@ -1,4 +1,13 @@
-# Phase 0 — Regenerated FR/ML baseline (BENCHMARKS)
+# Phase 0 — Locked FR/ML benchmarks (canonical for VLM)
+
+**Official locked benchmarks for Phase 0 and all later VLM comparisons:**
+
+| Model | Buffered LOOCV AUC (r = 1 km) |
+|---|---|
+| Random Forest | **0.8337** |
+| Logistic Regression | **0.7707** |
+
+These match regenerated `outputs_real/` and curated `results/aizawl_17fr/`. Use them everywhere Stage A / Stage B report against FR/ML. Do not cite the older kickoff draft figure RF **0.8275**.
 
 Generated on this machine via:
 
@@ -13,7 +22,7 @@ python run_pipeline.py ^
 
 XGBoost / PU bagging / GA feature selection were **off**. Buffered LOOCV radius = **1000 m** (from `configs/aizawl.yaml`). Study = `aizawl`, 17 FR features, 44 samples (22/22).
 
-## Benchmark table
+## Benchmark table (detail)
 
 | Model | Buffered LOOCV AUC (r=1 km) | 5-fold CV AUC (mean ± std) |
 |---|---|---|
@@ -31,13 +40,18 @@ Full-dataset (training-fit) metrics are in `outputs_real/model_metrics_report.tx
 
 | Source | RF buffered LOOCV | LR buffered LOOCV |
 |---|---|---|
-| **This regeneration (`outputs_real/`)** | **0.8337** | **0.7707** |
+| **Locked Phase 0 / VLM canonical** | **0.8337** | **0.7707** |
+| This regeneration (`outputs_real/`) | 0.8337 | 0.7707 |
 | Curated `results/aizawl_17fr/` | 0.8337 | 0.7707 |
-| `VLM_KICKOFF.md` quote | 0.8275 | 0.7707 |
+| Older kickoff draft quote | 0.8275 | 0.7707 |
 
-- **LR matches** the kickoff quote and curated results exactly (0.7707).
-- **RF matches** curated `results/aizawl_17fr/` (0.8337) and is **+0.0062** vs the older kickoff quote (0.8275). Not catastrophic — pipeline is healthy. Prefer **0.8337 / 0.7707** as the Phase 0 benchmark for all later VLM comparisons.
-- Divergence vs 0.8275 is likely an older run / rounding / code-path difference, not a broken pipeline.
+- **LR** matches the kickoff draft and curated results exactly (0.7707).
+- **RF** matches curated `results/aizawl_17fr/` and this regeneration (0.8337). That is **+0.0062** vs the older kickoff draft quote (0.8275). The 0.8275 figure is treated as an outdated run quote, not the current reproducible pipeline.
+- Work continues with **RF 0.8337 / LR 0.7707**. Metrics under `results/aizawl_17fr/` are left as-is; **this file is the canonical reference for VLM comparisons**.
+
+## Stage A constraint (class bands in the stack)
+
+Of the 21 bands in `outputs_vlm/aizawl_stack.tif`, only **6 are continuous** (`rainfall_mm`, `gravity_mgal`, `slope_final_deg`, `elevation_m`, `hillshade`, `slope_dem_deg`). The other **15 are integer class codes** (not continuous values, not one-hot). Phase 0 already lists the missing continuous rebuilds. **Until TWI, SPI, STI, TRI, distance layers, and NDVI are rebuilt as continuous, Stage A prompts must use class names/labels for those 15 bands** (not raw code integers as if they were physical units). See `outputs_vlm/stack_notes.md` and `outputs_vlm/audit.md`.
 
 ## Top RF feature importances (full-fit model)
 
@@ -67,6 +81,7 @@ Near-zero importance (constant FR across the 44 points): `elevation_fr`, `tri_fr
 | ROC plot | `outputs_real/roc_comparison.png` |
 | Feature importance plot | `outputs_real/feature_importance.png` |
 | Run metadata | `outputs_real/run_metadata.txt` |
+| Curated twin (leave numbers as-is) | `results/aizawl_17fr/` |
 
 ## Checkpoint note
 
