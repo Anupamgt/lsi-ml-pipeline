@@ -1,0 +1,48 @@
+# Study-area config for Aizawl, Mizoram (default).
+# Copy this file and edit paths / bbox / CRS to onboard a new region.
+# See README § "Onboarding a new study area".
+
+name: aizawl
+crs: EPSG:32646
+
+study_bbox:
+  x_min: 520000.0
+  x_max: 545000.0
+  y_min: 2580000.0
+  y_max: 2610000.0
+
+# Buffered LOOCV exclusion radius (metres)
+buffer_radius: 1000.0
+
+# Minimum distance from landslide points when sampling pseudo-absences
+min_sample_buffer_m: 500.0
+
+paths:
+  fr_table: data/fr_class_table_17factor.csv
+  fr_results: data/fr_results_17factor.json
+  rasters_dir: final_maps/sonker_17
+  landslide_points: final_maps/Aizawl_Points_UTM.gpkg
+  training_csv: data/landslide_training_data.csv
+  grid_csv: data/aizawl_grid.csv
+
+# Optional: override FEATURE_SPECS (column / fr_table_key / raster_name).
+# When omitted, the built-in 17 Sonker registry in feature_registry.py is used.
+# feature_specs:
+#   - column: rainfall_fr
+#     fr_table_key: rainfall
+#     raster_name: P2_03_Rainfall_quantile5.tif
+
+# Buffer Control Sampling / PU Bagging defaults (Labbé et al. NHESS-style)
+pu_bagging:
+  n_bags: 10
+  sample_ratio: 1.0          # unlabeled drawn per bag ≈ ratio * n_positives
+  inner_buffer_m: 500.0      # exclude unlabeled within this distance of positives
+  outer_buffer_m: null       # optional max distance from positives (null = none)
+
+feature_selection:
+  corr_threshold: 0.85
+  ga_population: 20
+  ga_generations: 15
+  ga_mutation_rate: 0.15
+  ga_crossover_rate: 0.7
+  ga_evaluator: rf           # rf | xgb

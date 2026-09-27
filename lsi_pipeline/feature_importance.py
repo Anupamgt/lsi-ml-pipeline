@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
-from lsi_pipeline.config import FEATURE_COLUMNS
+import lsi_pipeline.config as cfg
 
 matplotlib.use("Agg")
 
@@ -45,7 +45,7 @@ def plot_feature_importance(
 
     # Sort descending
     indices = np.argsort(importances)  # ascending; we'll reverse for plotting
-    features_sorted = [FEATURE_COLUMNS[i] for i in indices]
+    features_sorted = [cfg.FEATURE_COLUMNS[i] for i in indices]
     importances_sorted = importances[indices]
     std_sorted = std[indices]
 
@@ -129,7 +129,7 @@ def print_feature_importance_table(rf_model: RandomForestClassifier) -> None:
     """
     importances = rf_model.feature_importances_
     ranked = sorted(
-        zip(FEATURE_COLUMNS, importances), key=lambda x: x[1], reverse=True
+        zip(cfg.FEATURE_COLUMNS, importances), key=lambda x: x[1], reverse=True
     )
 
     print("\n" + "═" * 45)

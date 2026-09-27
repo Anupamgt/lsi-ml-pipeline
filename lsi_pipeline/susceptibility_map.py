@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
+import lsi_pipeline.config as cfg
 from lsi_pipeline.config import (
-    FEATURE_COLUMNS,
     N_ZONES,
     OUT_SUSC_CLASS,
     OUT_SUSC_SCORES,
@@ -66,14 +66,15 @@ def predict_susceptibility(
     logger.info("Loading grid CSV: %s", grid_csv_path)
     df_grid = pd.read_csv(grid_csv_path)
 
-    missing_cols = [c for c in FEATURE_COLUMNS if c not in df_grid.columns]
+    feature_columns = cfg.FEATURE_COLUMNS
+    missing_cols = [c for c in feature_columns if c not in df_grid.columns]
     if missing_cols:
         raise ValueError(
             f"Grid CSV is missing feature columns: {missing_cols}. "
             f"Available: {list(df_grid.columns)}"
         )
 
-    X_grid = df_grid[FEATURE_COLUMNS].values
+    X_grid = df_grid[feature_columns].values
 
     # ── Load scaler and model ─────────────────────────────────────────────
     logger.info("Loading scaler: %s", scaler_path)

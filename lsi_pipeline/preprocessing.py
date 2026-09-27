@@ -19,12 +19,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
 
+import lsi_pipeline.config as cfg
 from lsi_pipeline.config import (
     BUFFER_RADIUS,
-    FEATURE_COLUMNS,
     N_FOLDS,
     RANDOM_STATE,
-    TARGET_COLUMN,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,9 +133,12 @@ def buffered_loocv(
         ``(loocv_auc, y_true_all, y_prob_all)``
         The arrays can be used to plot the LOOCV ROC curve.
     """
+    # Read feature/target columns dynamically so study-config / GA selection apply
+    feature_columns = cfg.FEATURE_COLUMNS
+    target_column = cfg.TARGET_COLUMN
     coords = df[["x", "y"]].values         # (N, 2)
-    X = df[FEATURE_COLUMNS].values          # (N, F)
-    y = df[TARGET_COLUMN].values            # (N,)
+    X = df[feature_columns].values          # (N, F)
+    y = df[target_column].values            # (N,)
     N = len(df)
 
     y_true_all: list[int] = []
