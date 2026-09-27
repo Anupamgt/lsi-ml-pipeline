@@ -28,6 +28,7 @@ This validated statistical model establishes the prerequisite datasets and basel
 7. [Final Geospatial Maps & Repository Datasets](#7-final-geospatial-maps--repository-datasets)
 8. [Phase 2: Machine Learning Pipeline & Results](#8-phase-2-machine-learning-pipeline--results)
 9. [Quick Start & Usage Guide](#9-quick-start--usage-guide)
+12. [Phase 3: Vision-Language Extension (Stage A)](#12-phase-3-vision-language-extension-stage-a)
 
 ---
 
@@ -299,6 +300,24 @@ Buffered LOOCV remains the primary spatial metric.
      --input <training.csv> --grid <grid.csv> --output results/<your_area>/
    ```
 No core pipeline code changes are required if the FR table + rasters follow the same schema.
+
+---
+
+## 12. Phase 3: Vision-Language Extension (Stage A)
+
+Zero-shot VLM baseline on the **44 Aizawl test points** (never used for VLM training). Comparisons use locked FR/ML buffered-LOOCV AUCs from [`outputs_vlm/baseline.md`](outputs_vlm/baseline.md): **RF 0.8337** / **LR 0.7707**.
+
+```bash
+pip install -e ".[dev,vlm]"
+
+# Default free path (local Ollama vision model, e.g. qwen2.5vl)
+python -m lsi_vlm.eval_stage_a --config configs/vlm_stage_a.yaml --backend ollama
+
+# No API keys / Ollama unavailable — mock dry-run (results skeleton + tests)
+python -m lsi_vlm.eval_stage_a --config configs/vlm_stage_a.yaml --dry-run
+```
+
+Outputs: `outputs_vlm/stage_a_results.md`, `outputs_vlm/stage_a_examples.md`, cache under `outputs_vlm/cache/`. Report the **no-LSI** ablation as the honest baseline. Live AUCs require a real backend; mock numbers are harness scaffolding only.
 
 ---
 
