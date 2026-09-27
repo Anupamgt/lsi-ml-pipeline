@@ -1,0 +1,5 @@
+method: none
+selected (17): ['rainfall_fr', 'earthquake_fr', 'slope_fr', 'elevation_fr', 'distance_drainage_fr', 'tri_fr', 'geomorphology_fr', 'geology_fr', 'soil_fr', 'gravity_anomaly_fr', 'distance_faults_fr', 'sti_fr', 'twi_fr', 'spi_fr', 'distance_roads_fr', 'lulc_fr', 'ndvi_fr']
+dropped_correlated: []
+cart_ranking: []
+ga_best_fitness: None

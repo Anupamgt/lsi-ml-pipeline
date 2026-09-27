@@ -1,0 +1,58 @@
+┌────────────────────────────────────────────────────┐
+│ LSI ML PIPELINE — MODEL METRICS REPORT             │
+│ Study area       : aizawl                          │
+│ Active features   : 17                             │
+│ LOOCV buffer      : 1000 m                         │
+│ Stratified K-Fold : 5 folds                        │
+│ Feature list: 17 cols (see feature_selection.txt)  │
+│ feature_selection=none                             │
+│ pu_bagging=False                                   │
+├────────────────────────────────────────────────────┤
+│ RANDOM FOREST (PRIMARY MODEL)                      │
+├────────────────────────────────────────────────────┤
+│ LOOCV AUC  (buffered, r=1km) : 0.8337              │
+│ 5-Fold CV AUC (mean ± std)     : 0.8625 ± 0.1179   │
+│   Per-fold  : 0.850  0.700  0.950  1.000  0.812    │
+│                                                    │
+│ Full-Dataset Metrics (training fit — not for citation):│
+│   Accuracy  : 1.0000                               │
+│   Precision : 1.0000                               │
+│   Recall    : 1.0000                               │
+│   F1-Score  : 1.0000                               │
+│   ROC-AUC   : 1.0000                               │
+│   Confusion Matrix (TN  FP / FN  TP):              │
+│   [[  22     0]                                    │
+│    [   0    22]]                                   │
+├────────────────────────────────────────────────────┤
+│ LOGISTIC REGRESSION (BASELINE MODEL)               │
+├────────────────────────────────────────────────────┤
+│ LOOCV AUC  (buffered, r=1km) : 0.7707              │
+│ 5-Fold CV AUC (mean ± std)     : 0.7200 ± 0.1483   │
+│   Per-fold  : 0.700  0.650  0.550  0.950  0.750    │
+│                                                    │
+│ Full-Dataset Metrics (training fit — not for citation):│
+│   Accuracy  : 0.8636                               │
+│   Precision : 0.9444                               │
+│   Recall    : 0.7727                               │
+│   F1-Score  : 0.8500                               │
+│   ROC-AUC   : 0.9298                               │
+│   Confusion Matrix (TN  FP / FN  TP):              │
+│   [[  21     1]                                    │
+│    [   5    17]]                                   │
+├────────────────────────────────────────────────────┤
+│ XGBOOST (NHESS UPGRADE)                            │
+├────────────────────────────────────────────────────┤
+│ LOOCV AUC  (buffered, r=1km) : 0.7335              │
+│ 5-Fold CV AUC (mean ± std)     : 0.8325 ± 0.1198   │
+│   Per-fold  : 0.750  0.700  0.900  1.000  0.812    │
+│                                                    │
+│ Full-Dataset Metrics (training fit — not for citation):│
+│   Accuracy  : 0.9773                               │
+│   Precision : 1.0000                               │
+│   Recall    : 0.9545                               │
+│   F1-Score  : 0.9767                               │
+│   ROC-AUC   : 1.0000                               │
+│   Confusion Matrix (TN  FP / FN  TP):              │
+│   [[  22     0]                                    │
+│    [   1    21]]                                   │
+└────────────────────────────────────────────────────┘
