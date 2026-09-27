@@ -25,13 +25,16 @@ dev = [
     "pytest>=8.0",
     "pytest-cov",
 ]
-# Phase 0 stack/audit use core rasterio+numpy. Stage A extras listed for later install.
+# Phase 0 stack/audit use core rasterio+numpy. Stage A VLM backends + tiles.
 vlm = [
     "Pillow>=10.0",
     "pystac-client>=0.7",
     "planetary-computer>=1.0",
     "httpx>=0.27",
     "rich>=13.0",
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+    "openai>=1.40",
 ]
 
 [project.scripts]
