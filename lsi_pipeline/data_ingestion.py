@@ -11,14 +11,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import lsi_pipeline.config as cfg
 from lsi_pipeline.config import (
     COORD_COLUMNS,
-    FEATURE_COLUMNS,
     FR_LOW_MAX,
     FR_LOW_MIN,
-    MIN_SAMPLE_BUFFER_M,
     RANDOM_STATE,
-    STUDY_BBOX,
     TARGET_COLUMN,
 )
 
@@ -50,8 +48,10 @@ def load_and_validate(csv_path: str | Path) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
     logger.info("Loaded %s — shape %s", csv_path.name, df.shape)
 
+    feature_columns = cfg.FEATURE_COLUMNS
+
     # ── Schema check ────────────────────────────────────────────────────────
-    required_cols = COORD_COLUMNS + FEATURE_COLUMNS + [TARGET_COLUMN]
+    required_cols = COORD_COLUMNS + feature_columns + [TARGET_COLUMN]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         raise ValueError(
@@ -60,7 +60,7 @@ def load_and_validate(csv_path: str | Path) -> pd.DataFrame:
         )
 
     # ── Null check on feature columns ───────────────────────────────────────
-    null_counts = df[FEATURE_COLUMNS].isnull().sum()
+    null_counts = df[feature_columns].isnull().sum()
     bad_cols = null_counts[null_counts > 0]
     if not bad_cols.empty:
         raise ValueError(f"Null values found in feature columns:\n{bad_cols}")
@@ -96,8 +96,8 @@ def _print_dataset_summary(df: pd.DataFrame) -> None:
     print(f"  Landslide (1)       : {n_pos}")
     print(f"  Non-landslide (0)   : {n_neg}")
     print(f"  Class ratio (1:0)   : {ratio:.2f}")
-    print(f"  Active features     : {len(FEATURE_COLUMNS)}")
-    print(f"  Feature columns     : {FEATURE_COLUMNS}")
+    print(f"  Active features     : {len(cfg.FEATURE_COLUMNS)}")
+    print(f"  Feature columns     : {cfg.FEATURE_COLUMNS}")
     print("═" * 52 + "\n")
 
 
@@ -111,9 +111,9 @@ def generate_non_landslide_samples(
 ) -> pd.DataFrame:
     """Randomly generate non-landslide pseudo-absence points.
 
-    Points are sampled within the Aizawl study bounding box
-    (``STUDY_BBOX``) with a minimum Euclidean distance of
-    ``MIN_SAMPLE_BUFFER_M`` metres from all positive (landslide) points.
+    Points are sampled within the study bounding box
+    (``cfg.STUDY_BBOX``) with a minimum Euclidean distance of
+    ``cfg.MIN_SAMPLE_BUFFER_M`` metres from all positive (landslide) points.
 
     Feature (FR) values for pseudo-absence points are drawn from
     ``U(FR_LOW_MIN, FR_LOW_MAX)`` to simulate low-risk zone characteristics.
@@ -139,9 +139,12 @@ def generate_non_landslide_samples(
 
     rng = np.random.default_rng(rng_seed)
     pos_coords = df_positive[["x", "y"]].values  # (N, 2)
+    feature_columns = cfg.FEATURE_COLUMNS
+    study_bbox = cfg.STUDY_BBOX
+    min_buffer = cfg.MIN_SAMPLE_BUFFER_M
 
-    x_min, x_max = STUDY_BBOX["x_min"], STUDY_BBOX["x_max"]
-    y_min, y_max = STUDY_BBOX["y_min"], STUDY_BBOX["y_max"]
+    x_min, x_max = study_bbox["x_min"], study_bbox["x_max"]
+    y_min, y_max = study_bbox["y_min"], study_bbox["y_max"]
 
     sampled_xy: list[tuple[float, float]] = []
     max_attempts = n_samples * 200  # prevent infinite loop on tight domains
@@ -150,7 +153,7 @@ def generate_non_landslide_samples(
     logger.info(
         "Generating %d pseudo-absence points (buffer=%.0fm) …",
         n_samples,
-        MIN_SAMPLE_BUFFER_M,
+        min_buffer,
     )
 
     while len(sampled_xy) < n_samples and attempt < max_attempts:
@@ -162,7 +165,7 @@ def generate_non_landslide_samples(
         diffs = pos_coords - np.array([[cand_x, cand_y]])
         dists = np.linalg.norm(diffs, axis=1)
 
-        if dists.min() >= MIN_SAMPLE_BUFFER_M:
+        if dists.min() >= min_buffer:
             sampled_xy.append((cand_x, cand_y))
 
     if len(sampled_xy) < n_samples:
@@ -171,7 +174,7 @@ def generate_non_landslide_samples(
             "the bounding box with %.0f m buffer after %d attempts.",
             len(sampled_xy),
             n_samples,
-            MIN_SAMPLE_BUFFER_M,
+            min_buffer,
             max_attempts,
         )
 
@@ -179,10 +182,10 @@ def generate_non_landslide_samples(
     n_gen = len(sampled_xy)
 
     # Assign low-risk FR placeholder values
-    fr_values = rng.uniform(FR_LOW_MIN, FR_LOW_MAX, size=(n_gen, len(FEATURE_COLUMNS)))
+    fr_values = rng.uniform(FR_LOW_MIN, FR_LOW_MAX, size=(n_gen, len(feature_columns)))
 
     rows: dict[str, list] = {"x": list(xs), "y": list(ys)}
-    for i, col in enumerate(FEATURE_COLUMNS):
+    for i, col in enumerate(feature_columns):
         rows[col] = fr_values[:, i].tolist()
     rows[TARGET_COLUMN] = [0] * n_gen
 

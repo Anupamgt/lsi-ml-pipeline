@@ -3,11 +3,13 @@ feature_registry.py — Map each FEATURE_COLUMNS entry to FR table key + class r
 
 Class integers are sampled from the GeoTIFF, then mapped to raw FR via
 ``data/fr_class_table_17factor.csv`` (column ``FR``, not ``FRn``).
+
+Paths are defaults for Aizawl; override via ``study_area.apply_study_config``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Repo root = parent of lsi_pipeline/
@@ -30,10 +32,12 @@ class FeatureSpec:
     column: str
     fr_table_key: str
     raster_name: str
+    rasters_dir: Path | None = field(default=None)
 
     @property
     def raster_path(self) -> Path:
-        return SONKER_17_DIR / self.raster_name
+        base = self.rasters_dir if self.rasters_dir is not None else SONKER_17_DIR
+        return base / self.raster_name
 
 
 # Order matches FEATURE_COLUMNS in config.py (17 factors, no aspect_fr).

@@ -217,35 +217,88 @@ Class integers are sampled from GeoTIFFs under `final_maps/sonker_17/` and mappe
 git clone https://github.com/Anupamgt/lsi-ml-pipeline.git
 cd lsi-ml-pipeline
 pip install -e .
-# or: pip install scikit-learn pandas numpy matplotlib geopandas rasterio pyproj joblib
+# Dependencies include scikit-learn, xgboost, geopandas, rasterio, pyyaml, …
 ```
 
 ### Extract training data & coarse prediction grid
 ```bash
-python3 extract_training_data.py              # → data/landslide_training_data.csv (17 FR + target)
-python3 extract_training_data.py --grid       # → data/aizawl_grid.csv (x,y + 17 FR)
+python extract_training_data.py --study-config configs/aizawl.yaml
+python extract_training_data.py --study-config configs/aizawl.yaml --grid
 ```
 
-### Run the ML Pipeline on Real Aizawl Data
+### Run the enhanced ML pipeline (Aizawl default)
 ```bash
-# Fast smoke (skip Buffered LOOCV):
-python3 run_pipeline.py \
+# Full evaluation with XGBoost + Buffered LOOCV + susceptibility grid:
+python run_pipeline.py \
+  --study-config configs/aizawl.yaml \
   --input data/landslide_training_data.csv \
   --grid data/aizawl_grid.csv \
-  --output outputs_17/ \
-  --skip-loocv
+  --output results/aizawl_17fr
 
-# Full evaluation (Buffered LOOCV — slower on small N):
-python3 run_pipeline.py --input data/landslide_training_data.csv --output outputs_17/
+# NHESS-style options (Labbé et al.):
+python run_pipeline.py \
+  --study-config configs/aizawl.yaml \
+  --input data/landslide_training_data.csv \
+  --output results/aizawl_17fr_nhess \
+  --feature-selection ga \
+  --pu-bagging
+
+# Fast smoke (skip Buffered LOOCV):
+python run_pipeline.py -i data/landslide_training_data.csv -o outputs_17/ --skip-loocv
 ```
+
+CLI flags of interest:
+| Flag | Meaning |
+|------|---------|
+| `--study-config` | YAML with paths / bbox / CRS / buffers (default `configs/aizawl.yaml`) |
+| `--feature-selection {none,cart,ga}` | Correlation filter + CART ranking, or Genetic Algorithm |
+| `--pu-bagging` | Buffer Control Sampling + Positive-Unlabeled Bagging refine |
+| `--skip-xgboost` | Train/evaluate RF + LR only |
+| `--skip-loocv` | Skip buffered spatial LOOCV (k-fold only) |
+
+### Committed results
+Curated run artefacts live under [`results/aizawl_17fr/`](results/aizawl_17fr/) (metrics report, ROC / importance plots, classified susceptibility CSV, run metadata). Large `.pkl` model binaries are gitignored — regenerate them with the command in `run_metadata.txt`.
 
 ### Run Automated Unit Tests
 ```bash
-python3 -m unittest discover -s tests -v
+pytest -q
+# or: python -m pytest tests -v
 ```
 
 ### Changing the Active Feature Set
-Edit [`lsi_pipeline/feature_registry.py`](lsi_pipeline/feature_registry.py) (`FEATURE_SPECS`). `FEATURE_COLUMNS` in [`lsi_pipeline/config.py`](lsi_pipeline/config.py) is derived from that registry — no separate uncomment list. After changes, re-run `extract_training_data.py` (and `--grid` if needed).
+Edit [`lsi_pipeline/feature_registry.py`](lsi_pipeline/feature_registry.py) (`FEATURE_SPECS`), or override `feature_specs` in a study-area YAML. After changes, re-run `extract_training_data.py` (and `--grid` if needed).
+
+---
+
+## 10. NHESS-style upgrades (Labbé et al.)
+
+Practical modules inspired by Positive-Unlabeled learning and evolutionary feature selection:
+
+| Module | Role |
+|--------|------|
+| [`lsi_pipeline/pu_bagging.py`](lsi_pipeline/pu_bagging.py) | Buffer Control Sampling + PU Bagging ensemble |
+| [`lsi_pipeline/feature_selection.py`](lsi_pipeline/feature_selection.py) | Correlation filter, CART ranking, Genetic Algorithm (`fitness = CV error + n_features/100`) |
+| [`lsi_pipeline/model_training.py`](lsi_pipeline/model_training.py) | Random Forest, Logistic Regression, **XGBoost** |
+
+Buffered LOOCV remains the primary spatial metric.
+
+---
+
+## 11. Onboarding a new study area
+
+1. Prepare **inventory** points (GeoPackage/shapefile) in a projected CRS (metres).
+2. Prepare **class GeoTIFFs** (one per FR factor) + a **class→FR table** CSV with columns `factor,class,FR`.
+3. Copy [`configs/aizawl.yaml`](configs/aizawl.yaml) → `configs/<your_area>.yaml` and edit:
+   - `crs`, `study_bbox`, `buffer_radius`, `min_sample_buffer_m`
+   - `paths.*` (FR table, rasters dir, landslide points, training/grid CSV outputs)
+   - optional `feature_specs` list if raster filenames / factor keys differ
+4. Extract & train:
+   ```bash
+   python extract_training_data.py --study-config configs/<your_area>.yaml --grid
+   python run_pipeline.py --study-config configs/<your_area>.yaml \
+     --input <training.csv> --grid <grid.csv> --output results/<your_area>/
+   ```
+No core pipeline code changes are required if the FR table + rasters follow the same schema.
 
 ---
 

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-extract_training_data.py — Sample 17 Sonker FR class rasters → training CSV
-===========================================================================
-Loads class→FR maps from ``data/fr_class_table_17factor.csv`` (raw ``FR`` column),
-samples all registered class GeoTIFFs under ``final_maps/sonker_17/`` at
-landslide points and buffered pseudo-absences (EPSG:32646), and writes
-``data/landslide_training_data.csv`` with columns::
+extract_training_data.py — Sample FR class rasters → training CSV
+================================================================
+Loads class→FR maps from the study-area FR table, samples registered
+class GeoTIFFs at landslide points and buffered pseudo-absences, and
+writes the training CSV configured in the study-area YAML.
 
-    x, y, <17 *_fr features>, target
+Also supports a coarse prediction grid via ``--grid`` / ``--grid-only``.
 
-Also supports a coarse prediction grid via ``--grid`` / ``--grid-only``::
+Examples::
 
-    python extract_training_data.py --grid-only
-    # → data/aizawl_grid.csv  with columns x, y, <17 *_fr>
-
-Repo-relative paths only — no machine-specific absolute paths.
+    python extract_training_data.py --study-config configs/aizawl.yaml
+    python extract_training_data.py --grid
+    python extract_training_data.py --grid-only --grid-output data/aizawl_grid.csv
 """
 
 from __future__ import annotations
@@ -29,31 +27,18 @@ import pandas as pd
 import rasterio
 from rasterio.transform import rowcol, xy as raster_xy
 
-from lsi_pipeline.config import FEATURE_COLUMNS, MIN_SAMPLE_BUFFER_M, RANDOM_STATE
-from lsi_pipeline.feature_registry import (
-    FEATURE_SPECS,
-    FR_TABLE_PATH,
-    LANDSLIDE_POINTS_PATH,
-    REPO_ROOT,
-    TARGET_CRS,
-    TRAINING_CSV_PATH,
-    missing_rasters,
-)
+from lsi_pipeline.study_area import apply_study_config, load_study_config
 
 PIXEL_STRIDE = 10  # stride for building the valid-pixel candidate pool
 GRID_STRIDE = 40  # coarser stride for prediction-grid CSV (keeps file small)
 DISTANCE_BATCH = 50_000
-GRID_CSV_PATH: Path = REPO_ROOT / "data" / "aizawl_grid.csv"
 
 
 # ─── FR TABLE ────────────────────────────────────────────────────────────────
 
 
 def load_class_to_fr_maps(fr_table_path: Path) -> dict[str, dict[int, float]]:
-    """Build ``{fr_table_key: {class_int: raw_FR}}`` from the FR class CSV.
-
-    Prefers the raw ``FR`` column (not ``FRn``).
-    """
+    """Build ``{fr_table_key: {class_int: raw_FR}}`` from the FR class CSV."""
     if not fr_table_path.exists():
         raise FileNotFoundError(f"FR class table not found: {fr_table_path}")
 
@@ -79,7 +64,6 @@ def class_to_fr(cls_arr: np.ndarray, fr_map: dict[int, float]) -> np.ndarray:
     finite = np.isfinite(cls_arr)
     if not finite.any():
         return out
-    # Round to nearest int for float class codes from GeoTIFF
     rounded = np.rint(cls_arr[finite]).astype(int)
     mapped = np.full(rounded.shape, np.nan, dtype=np.float64)
     for cls, fr in fr_map.items():
@@ -113,7 +97,7 @@ def build_valid_pixel_pool(
     raster_path: Path,
     stride: int = PIXEL_STRIDE,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return UTM (x, y) centroids of valid (non-nodata, positive class) pixels."""
+    """Return (x, y) centroids of valid (non-nodata, positive class) pixels."""
     with rasterio.open(raster_path) as src:
         nd = src.nodata
         arr = src.read(1)
@@ -136,10 +120,14 @@ def sample_all_features(
     xs: np.ndarray,
     ys: np.ndarray,
     fr_maps: dict[str, dict[int, float]],
+    feature_specs,
+    feature_columns: list[str],
 ) -> dict[str, np.ndarray]:
     """Sample every registered class raster and map classes → raw FR."""
     out: dict[str, np.ndarray] = {}
-    for spec in FEATURE_SPECS:
+    for spec in feature_specs:
+        if spec.column not in feature_columns:
+            continue
         if spec.fr_table_key not in fr_maps:
             raise KeyError(
                 f"FR table has no factor '{spec.fr_table_key}' "
@@ -150,10 +138,13 @@ def sample_all_features(
     return out
 
 
-def all_features_finite(feat: dict[str, np.ndarray]) -> np.ndarray:
+def all_features_finite(
+    feat: dict[str, np.ndarray],
+    feature_columns: list[str],
+) -> np.ndarray:
     """Boolean mask: True where every feature value is finite."""
     mask = np.ones(len(next(iter(feat.values()))), dtype=bool)
-    for col in FEATURE_COLUMNS:
+    for col in feature_columns:
         mask &= np.isfinite(feat[col])
     return mask
 
@@ -164,33 +155,34 @@ def all_features_finite(feat: dict[str, np.ndarray]) -> np.ndarray:
 def generate_prediction_grid(
     output_path: Path,
     fr_maps: dict[str, dict[int, float]],
+    feature_specs,
+    feature_columns: list[str],
     stride: int = GRID_STRIDE,
 ) -> pd.DataFrame:
-    """Build a coarse prediction grid: x, y + all FEATURE_COLUMNS (no target).
-
-    Samples the slope class raster on a strided lattice, then maps every
-    registered class GeoTIFF → raw FR at those centroids. Rows missing any
-    feature are dropped.
-    """
-    pool_raster = next(s for s in FEATURE_SPECS if s.column == "slope_fr").raster_path
-    print(f"\n[G1] Building strided pixel lattice (stride={stride}) "
-          f"from {pool_raster.name} …")
+    """Build a coarse prediction grid: x, y + all feature columns (no target)."""
+    pool_spec = next(
+        (s for s in feature_specs if s.column == "slope_fr"),
+        feature_specs[0],
+    )
+    pool_raster = pool_spec.raster_path
+    print(
+        f"\n[G1] Building strided pixel lattice (stride={stride}) "
+        f"from {pool_raster.name} …"
+    )
     xs, ys = build_valid_pixel_pool(pool_raster, stride=stride)
     print(f"    Lattice size: {len(xs):,} candidate centroids")
 
-    print("\n[G2] Sampling all 17 class rasters → FR …")
-    feat = sample_all_features(xs, ys, fr_maps)
-    ok = all_features_finite(feat)
-    print(f"    Valid (all 17 finite): {ok.sum():,}/{len(xs):,}")
+    n_feat = len(feature_columns)
+    print(f"\n[G2] Sampling {n_feat} class rasters → FR …")
+    feat = sample_all_features(xs, ys, fr_maps, feature_specs, feature_columns)
+    ok = all_features_finite(feat, feature_columns)
+    print(f"    Valid (all {n_feat} finite): {ok.sum():,}/{len(xs):,}")
 
-    data: dict[str, np.ndarray] = {
-        "x": xs[ok],
-        "y": ys[ok],
-    }
-    for col in FEATURE_COLUMNS:
+    data: dict[str, np.ndarray] = {"x": xs[ok], "y": ys[ok]}
+    for col in feature_columns:
         data[col] = feat[col][ok]
 
-    col_order = ["x", "y", *FEATURE_COLUMNS]
+    col_order = ["x", "y", *feature_columns]
     df = pd.DataFrame(data)[col_order]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
@@ -202,40 +194,50 @@ def generate_prediction_grid(
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
 
-def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
+def extract_training(
+    fr_maps: dict[str, dict[int, float]],
+    study_cfg,
+) -> None:
     """Sample landslides + buffered pseudo-absences → training CSV."""
+    import lsi_pipeline.config as cfg
+    import lsi_pipeline.feature_registry as reg
+
+    feature_columns = list(cfg.FEATURE_COLUMNS)
+    feature_specs = reg.FEATURE_SPECS
+    n_feat = len(feature_columns)
+    min_buffer = cfg.MIN_SAMPLE_BUFFER_M
+    training_csv = study_cfg.training_csv
+    points_path = study_cfg.landslide_points
+    target_crs = study_cfg.crs
+
     print("\n" + "═" * 68)
-    print("  DATA EXTRACTION — 17 Sonker FR class rasters → training CSV")
+    print(f"  DATA EXTRACTION — {study_cfg.name} ({n_feat} FR features → training CSV)")
     print("═" * 68)
 
-    if not LANDSLIDE_POINTS_PATH.exists():
-        raise FileNotFoundError(
-            f"Landslide points not found: {LANDSLIDE_POINTS_PATH}"
-        )
+    if not points_path.exists():
+        raise FileNotFoundError(f"Landslide points not found: {points_path}")
 
-    rng = np.random.default_rng(RANDOM_STATE)
-    print(f"\n[0] FR table: {FR_TABLE_PATH.name}  "
+    rng = np.random.default_rng(cfg.RANDOM_STATE)
+    print(f"\n[0] FR table: {study_cfg.fr_table.name}  "
           f"({len(fr_maps)} factors, raw FR lookups)")
 
-    # ── 1. Landslide points in EPSG:32646 ────────────────────────────────
-    print(f"\n[1] Loading landslide points from {LANDSLIDE_POINTS_PATH.name} …")
-    gdf = gpd.read_file(LANDSLIDE_POINTS_PATH)
+    print(f"\n[1] Loading landslide points from {points_path.name} …")
+    gdf = gpd.read_file(points_path)
     if gdf.crs is None:
-        raise ValueError(f"Landslide points have no CRS: {LANDSLIDE_POINTS_PATH}")
-    if str(gdf.crs) != TARGET_CRS:
-        gdf = gdf.to_crs(TARGET_CRS)
+        raise ValueError(f"Landslide points have no CRS: {points_path}")
+    if str(gdf.crs) != target_crs:
+        gdf = gdf.to_crs(target_crs)
     ls_x = gdf.geometry.x.to_numpy(dtype=np.float64)
     ls_y = gdf.geometry.y.to_numpy(dtype=np.float64)
     n_pos = len(ls_x)
     print(f"    {n_pos} points  |  x [{ls_x.min():.1f}, {ls_x.max():.1f}]  "
-          f"y [{ls_y.min():.1f}, {ls_y.max():.1f}]  CRS={TARGET_CRS}")
+          f"y [{ls_y.min():.1f}, {ls_y.max():.1f}]  CRS={target_crs}")
 
-    # ── 2. Sample 17 FR features at landslide points ─────────────────────
-    print("\n[2] Sampling 17 class rasters at landslide points …")
-    ls_feat = sample_all_features(ls_x, ls_y, fr_maps)
-    ls_ok = all_features_finite(ls_feat)
-    print(f"    Valid (all 17 finite): {ls_ok.sum()}/{n_pos}")
-    for col in FEATURE_COLUMNS:
+    print(f"\n[2] Sampling {n_feat} class rasters at landslide points …")
+    ls_feat = sample_all_features(ls_x, ls_y, fr_maps, feature_specs, feature_columns)
+    ls_ok = all_features_finite(ls_feat, feature_columns)
+    print(f"    Valid (all {n_feat} finite): {ls_ok.sum()}/{n_pos}")
+    for col in feature_columns:
         arr = ls_feat[col]
         print(f"    {col:<22} valid={np.isfinite(arr).sum()}/{n_pos}  "
               f"range=[{np.nanmin(arr):.4f}, {np.nanmax(arr):.4f}]")
@@ -246,15 +248,17 @@ def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
             "Check CRS alignment and class→FR coverage."
         )
 
-    # ── 3. Valid-pixel pool from slope class raster (EPSG:32646) ─────────
-    pool_raster = next(s for s in FEATURE_SPECS if s.column == "slope_fr").raster_path
+    pool_spec = next(
+        (s for s in feature_specs if s.column == "slope_fr"),
+        feature_specs[0],
+    )
+    pool_raster = pool_spec.raster_path
     print(f"\n[3] Building valid-pixel pool (stride={PIXEL_STRIDE}) "
           f"from {pool_raster.name} …")
     pool_x, pool_y = build_valid_pixel_pool(pool_raster, stride=PIXEL_STRIDE)
     print(f"    Pool size: {len(pool_x):,} candidate pixel centroids")
 
-    # ── 4. Buffer filter (≥ MIN_SAMPLE_BUFFER_M from every landslide) ────
-    print(f"\n[4] Filtering pool: ≥{MIN_SAMPLE_BUFFER_M:.0f} m from every "
+    print(f"\n[4] Filtering pool: ≥{min_buffer:.0f} m from every "
           "landslide point …")
     ls_coords = np.stack([ls_x, ls_y], axis=1)
     keep = np.zeros(len(pool_x), dtype=bool)
@@ -264,23 +268,22 @@ def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
         dists = np.linalg.norm(
             batch[:, None, :] - ls_coords[None, :, :], axis=2
         ).min(axis=1)
-        keep[start:end] = dists >= MIN_SAMPLE_BUFFER_M
+        keep[start:end] = dists >= min_buffer
 
     cand_x, cand_y = pool_x[keep], pool_y[keep]
     print(f"    Candidates after buffer: {len(cand_x):,}")
     if len(cand_x) == 0:
         raise RuntimeError("No pseudo-absence candidates remain after buffer filter.")
 
-    # ── 5. Select & validate pseudo-absences (all 17 finite) ─────────────
     print(f"\n[5] Selecting {n_pos} pseudo-absence locations "
-          "(require finite values on all 17 features) …")
+          f"(require finite values on all {n_feat} features) …")
     n_needed = n_pos
     max_attempts = 5
     remaining_idx = np.arange(len(cand_x))
     rng.shuffle(remaining_idx)
     collected_x: list[float] = []
     collected_y: list[float] = []
-    collected_feat: dict[str, list[float]] = {c: [] for c in FEATURE_COLUMNS}
+    collected_feat: dict[str, list[float]] = {c: [] for c in feature_columns}
 
     attempt = 0
     cursor = 0
@@ -293,14 +296,14 @@ def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
         cursor += take
         bx = cand_x[batch_idx]
         by = cand_y[batch_idx]
-        bf = sample_all_features(bx, by, fr_maps)
-        ok = all_features_finite(bf)
+        bf = sample_all_features(bx, by, fr_maps, feature_specs, feature_columns)
+        ok = all_features_finite(bf, feature_columns)
         for i in np.where(ok)[0]:
             if len(collected_x) >= n_needed:
                 break
             collected_x.append(float(bx[i]))
             collected_y.append(float(by[i]))
-            for col in FEATURE_COLUMNS:
+            for col in feature_columns:
                 collected_feat[col].append(float(bf[col][i]))
         print(f"    attempt {attempt}: +{int(ok.sum())} valid "
               f"(have {len(collected_x)}/{n_needed})")
@@ -308,19 +311,18 @@ def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
     if len(collected_x) < n_needed:
         raise RuntimeError(
             f"Could only find {len(collected_x)}/{n_needed} pseudo-absences "
-            "with finite values on all 17 features."
+            f"with finite values on all {n_feat} features."
         )
 
     neg_x = np.asarray(collected_x[:n_needed], dtype=np.float64)
     neg_y = np.asarray(collected_y[:n_needed], dtype=np.float64)
     neg_feat = {
         col: np.asarray(collected_feat[col][:n_needed], dtype=np.float64)
-        for col in FEATURE_COLUMNS
+        for col in feature_columns
     }
-    print(f"    Selected {n_needed} pseudo-absences with all 17 features finite")
+    print(f"    Selected {n_needed} pseudo-absences with all {n_feat} features finite")
 
-    # ── 6. Assemble training CSV ─────────────────────────────────────────
-    print("\n[6] Assembling landslide_training_data.csv …")
+    print("\n[6] Assembling training CSV …")
     pos_data: dict[str, np.ndarray] = {"x": ls_x, "y": ls_y}
     pos_data.update(ls_feat)
     pos_data["target"] = np.ones(n_pos, dtype=int)
@@ -331,32 +333,36 @@ def extract_training(fr_maps: dict[str, dict[int, float]]) -> None:
     neg_data["target"] = np.zeros(n_needed, dtype=int)
     df_neg = pd.DataFrame(neg_data)
 
-    col_order = ["x", "y", *FEATURE_COLUMNS, "target"]
+    col_order = ["x", "y", *feature_columns, "target"]
     df = pd.concat([df_pos, df_neg], ignore_index=True)[col_order]
-    df = df.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
+    df = df.sample(frac=1, random_state=cfg.RANDOM_STATE).reset_index(drop=True)
 
-    if df[FEATURE_COLUMNS].isnull().any().any():
+    if df[feature_columns].isnull().any().any():
         raise RuntimeError("Output CSV still contains null feature values.")
 
-    TRAINING_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(TRAINING_CSV_PATH, index=False)
-    print(f"\n  ✓ Saved → {TRAINING_CSV_PATH}  (shape: {df.shape})")
+    training_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(training_csv, index=False)
+    print(f"\n  ✓ Saved → {training_csv}  (shape: {df.shape})")
     print(f"  columns: {list(df.columns)}")
     print("\n  Per-class feature means:")
-    print(df.groupby("target")[FEATURE_COLUMNS].mean().round(4).to_string())
+    print(df.groupby("target")[feature_columns].mean().round(4).to_string())
     print()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract 17-FR training data and/or a coarse prediction grid "
-        "from Sonker class GeoTIFFs."
+        description="Extract FR training data and/or a coarse prediction grid "
+        "from class GeoTIFFs (study-area configurable)."
+    )
+    parser.add_argument(
+        "--study-config",
+        default="configs/aizawl.yaml",
+        help="Study-area YAML (default: configs/aizawl.yaml)",
     )
     parser.add_argument(
         "--grid",
         action="store_true",
-        help="Write data/aizawl_grid.csv (x,y + all FEATURE_COLUMNS) via "
-        "strided raster sampling instead of (or in addition to) training CSV",
+        help="Also write the prediction grid CSV from study config paths.grid_csv",
     )
     parser.add_argument(
         "--grid-only",
@@ -372,33 +378,44 @@ def main() -> None:
     parser.add_argument(
         "--grid-output",
         type=Path,
-        default=GRID_CSV_PATH,
-        help=f"Grid CSV path (default: {GRID_CSV_PATH})",
+        default=None,
+        help="Override grid CSV path (default: study config paths.grid_csv)",
     )
     args = parser.parse_args()
+
+    study_cfg = apply_study_config(load_study_config(args.study_config))
+
+    import lsi_pipeline.config as cfg
+    import lsi_pipeline.feature_registry as reg
+    from lsi_pipeline.feature_registry import missing_rasters
 
     missing = missing_rasters()
     if missing:
         lines = "\n".join(f"  - {p}" for p in missing)
         raise FileNotFoundError(
             f"Missing {len(missing)} registered GeoTIFF(s). "
-            f"Expected under final_maps/sonker_17/:\n{lines}"
+            f"Expected under {study_cfg.rasters_dir}:\n{lines}"
         )
 
-    fr_maps = load_class_to_fr_maps(FR_TABLE_PATH)
+    fr_maps = load_class_to_fr_maps(study_cfg.fr_table)
+    grid_output = args.grid_output or study_cfg.grid_csv
 
     do_grid = args.grid or args.grid_only
     do_train = not args.grid_only
 
     if do_train:
-        extract_training(fr_maps)
+        extract_training(fr_maps, study_cfg)
 
     if do_grid:
         print("\n" + "═" * 68)
-        print("  GRID EXPORT — strided Sonker class rasters → aizawl_grid.csv")
+        print(f"  GRID EXPORT — {study_cfg.name} → {grid_output.name}")
         print("═" * 68)
         generate_prediction_grid(
-            args.grid_output, fr_maps, stride=args.grid_stride
+            grid_output,
+            fr_maps,
+            reg.FEATURE_SPECS,
+            list(cfg.FEATURE_COLUMNS),
+            stride=args.grid_stride,
         )
 
 

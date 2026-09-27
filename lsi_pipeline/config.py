@@ -3,7 +3,14 @@ config.py — Central configuration for the LSI ML Pipeline.
 
 Edit FEATURE_COLUMNS / feature_registry to change the active FR feature set
 without touching training, evaluation, or map modules.
+
+For multi-region runs, prefer ``configs/<area>.yaml`` + ``--study-config``
+(see ``lsi_pipeline.study_area``).
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from lsi_pipeline.feature_registry import (  # noqa: F401 — re-exported for callers
     FEATURE_REGISTRY,
@@ -14,6 +21,12 @@ from lsi_pipeline.feature_registry import (  # noqa: F401 — re-exported for ca
     SONKER_17_DIR,
     TRAINING_CSV_PATH,
 )
+
+if TYPE_CHECKING:
+    from lsi_pipeline.study_area import StudyAreaConfig
+
+# Populated by study_area.apply_study_config(); None until then.
+ACTIVE_STUDY_CONFIG: "StudyAreaConfig | None" = None
 
 # ─── FEATURE COLUMNS ────────────────────────────────────────────────────────
 # Single source of truth: 17 Sonker Frequency Ratio factors (no aspect_fr).
@@ -67,6 +80,19 @@ LR_PARAMS: dict = {
     "random_state": RANDOM_STATE,
 }
 
+XGB_PARAMS: dict = {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.1,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "reg_lambda": 1.0,
+    "eval_metric": "logloss",
+    "random_state": RANDOM_STATE,
+    "n_jobs": -1,
+    "verbosity": 0,
+}
+
 # ─── CROSS-VALIDATION ───────────────────────────────────────────────────────
 N_FOLDS: int = 5
 
@@ -78,9 +104,12 @@ N_ZONES: int = len(ZONE_LABELS)
 OUT_FULL_DATASET: str = "landslide_full_dataset.csv"
 OUT_RF_MODEL: str = "rf_model.pkl"
 OUT_LR_MODEL: str = "lr_model.pkl"
+OUT_XGB_MODEL: str = "xgb_model.pkl"
 OUT_SCALER: str = "scaler.pkl"
 OUT_ROC_PLOT: str = "roc_comparison.png"
 OUT_FI_PLOT: str = "feature_importance.png"
 OUT_SUSC_SCORES: str = "susceptibility_scores.csv"
 OUT_SUSC_CLASS: str = "susceptibility_classified.csv"
 OUT_METRICS: str = "model_metrics_report.txt"
+OUT_FEATURE_SELECTION: str = "feature_selection.txt"
+OUT_RUN_META: str = "run_metadata.txt"

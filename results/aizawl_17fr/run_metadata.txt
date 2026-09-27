@@ -1,0 +1,18 @@
+study_area: aizawl
+study_config: C:\Users\sharm\lsi-ml-pipeline-1\configs\aizawl.yaml
+crs: EPSG:32646
+input: data/landslide_training_data.csv
+grid: data/aizawl_grid.csv
+feature_selection: none
+pu_bagging: False
+skip_loocv: False
+skip_xgboost: False
+buffer_radius_m: 1000.0
+n_features: 17
+features: ['rainfall_fr', 'earthquake_fr', 'slope_fr', 'elevation_fr', 'distance_drainage_fr', 'tri_fr', 'geomorphology_fr', 'geology_fr', 'soil_fr', 'gravity_anomaly_fr', 'distance_faults_fr', 'sti_fr', 'twi_fr', 'spi_fr', 'distance_roads_fr', 'lulc_fr', 'ndvi_fr']
+elapsed_s: 46.7
+
+Model pickles (rf_model.pkl, lr_model.pkl, xgb_model.pkl, scaler.pkl)
+are gitignored. Regenerate with:
+  python run_pipeline.py --study-config configs/aizawl.yaml \
+    --input data/landslide_training_data.csv --output results/aizawl_17fr --grid data/aizawl_grid.csv
