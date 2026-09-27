@@ -22,6 +22,13 @@ env/
 outputs*/
 outputs_real/
 
+# Phase 0 VLM docs/stats under outputs_vlm/ (GeoTIFFs stay ignored via *.tif)
+!outputs_vlm/
+!outputs_vlm/**/
+!outputs_vlm/**/*.md
+!outputs_vlm/**/*.json
+
+
 # Curated committed results (metrics, plots, classified maps) — allow results/
 # but still ignore heavy pickles inside results/
 !results/
@@ -57,6 +64,10 @@ outputs_real/
 # Keep ignoring pickles even under results/ (regenerate via run_pipeline.py)
 results/**/*.pkl
 results/**/*.joblib
+
+# ─── Secrets (never commit) ──────────────────────────────────────────────────
+.env
+.env.*
 
 # ─── OS / editor ─────────────────────────────────────────────────────────────
 .DS_Store

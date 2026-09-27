@@ -25,10 +25,18 @@ dev = [
     "pytest>=8.0",
     "pytest-cov",
 ]
+# Phase 0 stack/audit use core rasterio+numpy. Stage A extras listed for later install.
+vlm = [
+    "Pillow>=10.0",
+    "pystac-client>=0.7",
+    "planetary-computer>=1.0",
+    "httpx>=0.27",
+    "rich>=13.0",
+]
 
 [project.scripts]
 lsi-pipeline = "run_pipeline:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["lsi_pipeline*"]
+include = ["lsi_pipeline*", "lsi_vlm*"]
