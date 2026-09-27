@@ -1,0 +1,260 @@
+{
+  "notes": "Of 21 bands, only 6 are continuous (rainfall_mm, gravity_mgal, slope_final_deg, elevation_m, hillshade, slope_dem_deg); the other 15 are integer class codes (not continuous, not one-hot). Stage A prompts must use class names/labels for those 15 until TWI/SPI/STI/TRI, distance layers, and NDVI are rebuilt as continuous. See outputs_vlm/stack_notes.md.",
+  "crs": "EPSG:32646",
+  "resolution_m": 30.0,
+  "width": 2003,
+  "height": 4066,
+  "bounds": {
+    "left": 461520.0,
+    "bottom": 2578020.0,
+    "right": 521610.0,
+    "top": 2700000.0
+  },
+  "nodata": -9999.0,
+  "bands": [
+    {
+      "mean": 2463.10009765625,
+      "std": 225.94403076171875,
+      "min": 1979.66650390625,
+      "max": 3020.931396484375,
+      "valid_pixels": 3833827,
+      "name": "rainfall_mm",
+      "kind": "continuous",
+      "description": "CHIRPS rainfall (mm)",
+      "source": "final_maps/sonker_17/S17_01_Rainfall_CHIRPS_mm.tif"
+    },
+    {
+      "mean": -120.81342315673828,
+      "std": 75.2791519165039,
+      "min": -315.6966247558594,
+      "max": 72.69384765625,
+      "valid_pixels": 3828235,
+      "name": "gravity_mgal",
+      "kind": "continuous",
+      "description": "Bouguer gravity anomaly (mGal)",
+      "source": "final_maps/sonker_17/S17_10_Gravity_Bouguer_mGal.tif"
+    },
+    {
+      "mean": 25.370296478271484,
+      "std": 9.997218132019043,
+      "min": 0.0,
+      "max": 71.8432388305664,
+      "valid_pixels": 3815324,
+      "name": "slope_final_deg",
+      "kind": "continuous",
+      "description": "Existing Slope_FINAL raster (degrees assumed)",
+      "source": "final_maps/Slope_FINAL.tif"
+    },
+    {
+      "mean": 645.014404296875,
+      "std": 314.4906311035156,
+      "min": 20.0,
+      "max": 1902.7384033203125,
+      "valid_pixels": 3833855,
+      "name": "elevation_m",
+      "kind": "continuous",
+      "description": "DEM elevation (m)",
+      "source": "final_maps/DEM_UTF_FINAL.tif"
+    },
+    {
+      "mean": 161.7923126220703,
+      "std": 56.69015884399414,
+      "min": 1.0,
+      "max": 255.0,
+      "valid_pixels": 3815324,
+      "name": "hillshade",
+      "kind": "continuous",
+      "description": "Hillshade (visual / illumination aid)",
+      "source": "final_maps/HILLSHADE_2.tif"
+    },
+    {
+      "mean": 25.377986907958984,
+      "std": 10.970600128173828,
+      "min": 0.0,
+      "max": 88.68706512451172,
+      "valid_pixels": 3833855,
+      "name": "slope_dem_deg",
+      "kind": "derived",
+      "description": "Slope (degrees) from DEM via numpy gradient",
+      "source": "derived:numpy_gradient(DEM_UTF_FINAL)"
+    },
+    {
+      "mean": 2.9665420055389404,
+      "std": 0.19214338064193726,
+      "min": 2.0,
+      "max": 4.0,
+      "valid_pixels": 3827128,
+      "name": "earthquake_class",
+      "kind": "categorical",
+      "description": "Earthquake class codes (not continuous)",
+      "source": "final_maps/sonker_17/S17_02_Earthquake_classes.tif"
+    },
+    {
+      "mean": 2.015655994415283,
+      "std": 0.7361286282539368,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3833801,
+      "name": "slope_class",
+      "kind": "categorical",
+      "description": "Slope class codes",
+      "source": "final_maps/sonker_17/S17_03_Slope_classes.tif"
+    },
+    {
+      "mean": 1.0117017030715942,
+      "std": 0.10753979533910751,
+      "min": 1.0,
+      "max": 2.0,
+      "valid_pixels": 3829253,
+      "name": "altitude_class",
+      "kind": "categorical",
+      "description": "Altitude class codes",
+      "source": "final_maps/sonker_17/S17_04_Altitude_classes.tif"
+    },
+    {
+      "mean": 2.0968270301818848,
+      "std": 1.0720170736312866,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3833827,
+      "name": "drainage_dist_class",
+      "kind": "categorical",
+      "description": "Distance-to-drainage class codes (continuous m missing)",
+      "source": "final_maps/sonker_17/S17_05_Distance_drainages_classes.tif"
+    },
+    {
+      "mean": 4.998994827270508,
+      "std": 0.06295783817768097,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3829253,
+      "name": "tri_class",
+      "kind": "categorical",
+      "description": "TRI class codes",
+      "source": "final_maps/sonker_17/S17_06_TRI_classes.tif"
+    },
+    {
+      "mean": 3.505784273147583,
+      "std": 0.499994695186615,
+      "min": 2.0,
+      "max": 4.0,
+      "valid_pixels": 3829253,
+      "name": "geomorphology_class",
+      "kind": "categorical",
+      "description": "Geomorphology class codes",
+      "source": "final_maps/sonker_17/S17_07_Geomorphology_classes.tif"
+    },
+    {
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "valid_pixels": 3828084,
+      "name": "geology_class",
+      "kind": "categorical",
+      "description": "Geology class codes",
+      "source": "final_maps/sonker_17/S17_08_Geology_classes.tif"
+    },
+    {
+      "mean": 1.192168951034546,
+      "std": 0.4696618318557739,
+      "min": 1.0,
+      "max": 4.0,
+      "valid_pixels": 3828235,
+      "name": "soil_class",
+      "kind": "categorical",
+      "description": "Soil class codes",
+      "source": "final_maps/sonker_17/S17_09_Soil_India_classes.tif"
+    },
+    {
+      "mean": 4.360944747924805,
+      "std": 1.230968952178955,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3829253,
+      "name": "faults_dist_class",
+      "kind": "categorical",
+      "description": "Distance-to-faults class codes (continuous m missing)",
+      "source": "final_maps/sonker_17/S17_11_Distance_faults_classes.tif"
+    },
+    {
+      "mean": 2.9204437732696533,
+      "std": 1.054283857345581,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3829252,
+      "name": "sti_class",
+      "kind": "categorical",
+      "description": "STI class codes",
+      "source": "final_maps/sonker_17/S17_12_STI_classes.tif"
+    },
+    {
+      "mean": 1.7699427604675293,
+      "std": 0.6926236748695374,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3829252,
+      "name": "twi_class",
+      "kind": "categorical",
+      "description": "TWI class codes",
+      "source": "final_maps/sonker_17/S17_13_TWI_classes.tif"
+    },
+    {
+      "mean": 4.785034656524658,
+      "std": 0.5957902669906616,
+      "min": 2.0,
+      "max": 5.0,
+      "valid_pixels": 3829252,
+      "name": "spi_class",
+      "kind": "categorical",
+      "description": "SPI class codes",
+      "source": "final_maps/sonker_17/S17_14_SPI_classes.tif"
+    },
+    {
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "valid_pixels": 3827299,
+      "name": "roads_dist_class",
+      "kind": "categorical",
+      "description": "Distance-to-roads class codes (continuous m missing)",
+      "source": "final_maps/sonker_17/S17_15_Distance_roads_classes.tif"
+    },
+    {
+      "mean": 5.896228313446045,
+      "std": 0.5188615322113037,
+      "min": 1.0,
+      "max": 6.0,
+      "valid_pixels": 3833827,
+      "name": "lulc_class",
+      "kind": "categorical",
+      "description": "LULC class codes",
+      "source": "final_maps/sonker_17/S17_16_LULC_classes.tif"
+    },
+    {
+      "mean": 4.994114875793457,
+      "std": 0.08705396950244904,
+      "min": 1.0,
+      "max": 5.0,
+      "valid_pixels": 3833827,
+      "name": "ndvi_class",
+      "kind": "categorical",
+      "description": "NDVI class codes (continuous NDVI missing)",
+      "source": "final_maps/sonker_17/S17_17_NDVI_classes.tif"
+    }
+  ],
+  "missing_sources": [],
+  "missing_continuous_rebuild": [
+    "drainage_distance_m",
+    "faults_distance_m",
+    "roads_distance_m",
+    "ndvi_continuous",
+    "tri_continuous",
+    "twi_continuous",
+    "spi_continuous",
+    "sti_continuous",
+    "earthquake_density_or_pga"
+  ],
+  "regenerate": "python -m lsi_vlm.stack --out outputs_vlm/aizawl_stack.tif --stats outputs_vlm/aizawl_stack_stats.json"
+}
