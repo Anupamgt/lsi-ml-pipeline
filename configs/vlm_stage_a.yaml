@@ -21,14 +21,19 @@ tiles:
     stac_url: https://planetarycomputer.microsoft.com/api/stac/v1
     collection: sentinel-2-l2a
     months: [11, 12, 1, 2]
-    year_start: 2019
+    year_start: 2020
     year_end: 2024
-    max_cloud: 30
-    max_items: 12
-    assets: [B04, B03, B02]
+    max_cloud: 40
+    max_items: 4
+    assets: [B04, B03, B02]   # Sentinel-2 L2A true-colour (R,G,B)
+  # Coarse study-area grid API only — do not run full-grid VLM until Stage A review.
   grid:
     enabled: false
+    tile_size_px: 64
+    resolution_m: 30.0
     overlap_px: 0
+    bbox: null                # [x_min, y_min, x_max, y_max] in crs; null → points + buffer
+    buffer_m: 2000.0
 
 prompt:
   # Metres across the tile window (64 px × 30 m ≈ 1920 m by default).

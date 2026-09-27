@@ -459,35 +459,65 @@ def fetch_sentinel2_rgb(
     ranked.sort(key=lambda t: t[0])
     ranked = ranked[:max_items]
 
-    stacks: list[np.ndarray] = []
-    for _cloud, item in ranked:
-        try:
-            band_arrs: list[np.ndarray] = []
-            for asset_key in assets:
-                if asset_key not in item.assets:
-                    raise KeyError(f"asset {asset_key} missing")
-                href = pc.sign(item.assets[asset_key].href)
-                arr = np.full((window.size_px, window.size_px), np.nan, dtype=np.float32)
-                with rasterio.open(href) as src:
-                    reproject(
-                        source=rasterio.band(src, 1),
-                        destination=arr,
-                        src_transform=src.transform,
-                        src_crs=src.crs,
-                        dst_transform=window.transform,
-                        dst_crs=window.crs,
-                        resampling=Resampling.bilinear,
-                        src_nodata=src.nodata,
-                        dst_nodata=np.nan,
-                    )
-                band_arrs.append(arr)
-            rgb = np.stack(band_arrs, axis=-1)  # H,W,3
-            if float(np.isfinite(rgb).mean()) < 0.2:
-                continue
-            stacks.append(rgb)
-        except Exception as exc:
-            logger.debug("Skip item %s: %s", getattr(item, "id", "?"), exc)
-            continue
+    def _read_visual(item: Any) -> np.ndarray:
+        href = pc.sign(item.assets["visual"].href)
+        rgb = np.full((window.size_px, window.size_px, 3), np.nan, dtype=np.float32)
+        with rasterio.open(href) as src:
+            for b in range(1, min(4, src.count + 1)):
+                band_dst = np.full((window.size_px, window.size_px), np.nan, dtype=np.float32)
+                reproject(
+                    source=rasterio.band(src, b),
+                    destination=band_dst,
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=window.transform,
+                    dst_crs=window.crs,
+                    resampling=Resampling.bilinear,
+                    src_nodata=src.nodata,
+                    dst_nodata=np.nan,
+                )
+                rgb[..., b - 1] = band_dst
+        return rgb
+
+    def _read_spectral(item: Any) -> np.ndarray:
+        band_arrs: list[np.ndarray] = []
+        for asset_key in assets:
+            if asset_key not in item.assets:
+                raise KeyError(f"asset {asset_key} missing")
+            href = pc.sign(item.assets[asset_key].href)
+            arr = np.full((window.size_px, window.size_px), np.nan, dtype=np.float32)
+            with rasterio.open(href) as src:
+                reproject(
+                    source=rasterio.band(src, 1),
+                    destination=arr,
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=window.transform,
+                    dst_crs=window.crs,
+                    resampling=Resampling.bilinear,
+                    src_nodata=src.nodata,
+                    dst_nodata=np.nan,
+                )
+            band_arrs.append(arr)
+        return np.stack(band_arrs, axis=-1)
+
+    def _collect(reader, label: str) -> tuple[list[np.ndarray], str]:
+        out: list[np.ndarray] = []
+        for _cloud, item in ranked:
+            try:
+                if label == "visual" and "visual" not in item.assets:
+                    continue
+                rgb = reader(item)
+                if float(np.isfinite(rgb).mean()) < 0.2:
+                    continue
+                out.append(rgb)
+            except Exception as exc:
+                logger.debug("Skip item %s (%s): %s", getattr(item, "id", "?"), label, exc)
+        return out, label
+
+    stacks, src_kind = _collect(_read_visual, "visual")
+    if not stacks:
+        stacks, src_kind = _collect(_read_spectral, "B04/B03/B02")
 
     if not stacks:
         return None, "no usable Sentinel-2 scenes in dry-season window"
@@ -497,21 +527,29 @@ def fetch_sentinel2_rgb(
         warnings.simplefilter("ignore", category=RuntimeWarning)
         med = np.nanmedian(cube, axis=0)
 
-    # Reflectance scale: L2A often 0–10000; also handle 0–1.
     finite = med[np.isfinite(med)]
     if finite.size == 0:
         return None, "median composite all-nodata"
-    scale = 10000.0 if float(np.nanpercentile(finite, 99)) > 1.5 else 1.0
-    med = np.clip(med / scale, 0.0, 1.0)
-    # Soft brightness stretch for display.
-    p2 = float(np.nanpercentile(med, 2))
-    p98 = float(np.nanpercentile(med, 98))
-    if p98 <= p2:
-        p2, p98 = 0.0, 1.0
-    stretched = np.clip((med - p2) / (p98 - p2), 0.0, 1.0)
+
+    # ``visual`` is already 0–255; spectral bands are often 0–10000.
+    vmax = float(np.nanpercentile(finite, 99))
+    if src_kind == "visual" or vmax <= 255.5:
+        stretched = np.clip(med, 0.0, 255.0) / 255.0
+    else:
+        scale = 10000.0 if vmax > 1.5 else 1.0
+        stretched = np.clip(med / scale, 0.0, 1.0)
+        p2 = float(np.nanpercentile(stretched, 2))
+        p98 = float(np.nanpercentile(stretched, 98))
+        if p98 <= p2:
+            p2, p98 = 0.0, 1.0
+        stretched = np.clip((stretched - p2) / (p98 - p2), 0.0, 1.0)
+
     stretched = np.nan_to_num(stretched, nan=0.0)
     rgb8 = (stretched * 255.0).astype(np.uint8)
-    note = f"dry-season median of {len(stacks)} scene(s); years {year_start}-{year_end}"
+    note = (
+        f"dry-season median of {len(stacks)} scene(s) via {src_kind}; "
+        f"years {year_start}-{year_end}"
+    )
     return rgb8, note
 
 
@@ -753,8 +791,13 @@ def build_study_area_grid(
 
 
 def _configure_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    # Keep third-party (rasterio/GDAL) quiet even with -v.
+    logging.getLogger("rasterio").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    if verbose:
+        logger.setLevel(logging.DEBUG)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
